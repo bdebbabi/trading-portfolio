@@ -364,6 +364,8 @@ external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 # initial_day = datetime.datetime.strptime(portfolio['Date'].iloc[-1], '%d-%m-%Y')
+summary_width = '40%' if mobile else '30%'
+portfolio_composition_width = '60%' if mobile else '70%'
 initial_day = portfolio['Date'].iloc[-1]
 app.layout = html.Div([
     html.H1(children='Portfolio', style={'margin-left': '100px'}),
@@ -377,9 +379,9 @@ app.layout = html.Div([
             style={'margin-left': '100px', 'width': '50%', 'display':'inline-block', 'margin-bottom':'20px'}
             ),
     html.Div([
-        html.Div([html.H6(children='Summary'),summary(portfolio)[0]], style={'margin-left': '100px', 'width': '20%', 'display':'inline-block'}),
+        html.Div([html.H6(children='Summary'),summary(portfolio)[0]], style={'margin-left': '100px', 'width': summary_width, 'display':'inline-block'}),
         html.Div([dcc.Graph(id='portfolio_composition', figure=portfolio_composition(portfolio), style={ 'display':'inline-block'}),], 
-        style={'width': '70%', 'display':'inline-block', 'margin-left': '100px'})
+        style={'width': portfolio_composition_width, 'display':'inline-block', 'margin-left': '100px'})
     ],style={'display':'flex'}),
     dcc.Graph(id='Gains', figure=portfolio_variation('Gains', portfolio)),
     dcc.Graph(id='Gains%', figure=portfolio_variation('Gains (%)', portfolio)),
