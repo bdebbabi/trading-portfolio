@@ -22,11 +22,13 @@ class webparser:
 
 
         options = Options()
-        options.add_argument('--start-maximized')
+        #options.add_argument('--start-maximized')
         if self.debug < 2:
             options.add_argument('--headless')
         
         self.driver = webdriver.Chrome(chrome_options=options)
+        self.driver.set_window_size(1920, 1080)
+        
         self.driver.get("https://trader.degiro.nl/trader/#/portfolio")
         wait = WebDriverWait(self.driver, 100)
 
@@ -90,7 +92,6 @@ class webparser:
         return positions
     
     def clean_positions(self, positions, normalize=True):
-
         positions = [positions[i: i+12] for i in range(0, len(positions), 15)]
         positions = pd.DataFrame(positions, columns=['Produit', 'Place', 'Quantité','Price','Currency', 'Amount', 'PRU', '+/-', '+/-%', 'Gains without fees', 'Gains','Date'])
         positions['Produit'] = positions['Produit'].str[4:-2].str[:31].str.upper()
@@ -110,7 +111,7 @@ class webparser:
         positions['Gains (%)'] = (positions['Gains']/(positions['Amount'] - positions['Gains'])).round(2)
         
         sum = positions.sum()
-        total_row = {'Produit':'Total', 'Amount': round(sum['Amount'], 2), 'Gains without fees': round(sum['Gains without fees'], 2), 'Gains': sum['Gains'], 'Date': positions.iloc[0]['Date'], 'Gains (%)': round((sum['Gains']/(sum['Amount'] - sum['Gains'])), 2), 'Gains without fees (%)': round((sum['Gains without fees']/(sum['Amount'] - sum['Gains without fees']) * 100), 2) }
+        total_row = {'Produit':'Total', 'Amount': round(sum['Amount'], 2), 'Gains without fees': round(sum['Gains without fees'], 2), 'Gains': round(sum['Gains'],2), 'Date': positions.iloc[0]['Date'], 'Gains (%)': round((sum['Gains']/(sum['Amount'] - sum['Gains'])), 2), 'Gains without fees (%)': round((sum['Gains without fees']/(sum['Amount'] - sum['Gains without fees']) * 100), 2) }
         positions = positions.append(total_row, ignore_index=True)
         
         return positions
@@ -118,7 +119,7 @@ class webparser:
     def get_monetary_funds(self):
 
         accrued = self.driver.find_element_by_css_selector("span[data-id='accrued']")
-
+        accrued = float(accrued.text.replace(',','.'))
         return accrued
 
     def get_account_summary(self):
@@ -135,10 +136,10 @@ class webparser:
         spans = summary.find_elements_by_css_selector("span[data-id='totalPortfolio']")
         elements = [float(span.text[2:].replace(',','.')) for span in spans]
 
-        portfolio_cash, portfolio, FM, cash, daily_gains, total_gains = elements
+        
 
         # return portfolio_cash, portfolio, FM, cash, daily_gains, total_gains
-        return cash
+        return elements
     
     def quit(self):
         # self.driver.quit()

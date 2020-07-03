@@ -10,6 +10,7 @@ import requests
 from io import StringIO
 import plotly.graph_objects as go
 import argparse
+import os.path 
 
 from datetime import datetime as dt
 import dash
@@ -19,8 +20,11 @@ import dash_core_components as dcc
 import re
 import plotly.express as px
 import dash_table
+from tqdm import tqdm 
 
 from parser import *
+
+CREATION_DATE = date(2020, 1, 9)
 
 def get_last_portfolio(portfolio, day):
     if day == pd.to_datetime(date.today(), format='%Y-%m-%d'):
@@ -31,7 +35,6 @@ def get_last_portfolio(portfolio, day):
     return last_portfolio
 
 def summary(portfolio, day=date.today()):
-    monetary_funds_refund = 0.29
     if portfolio['Date'].isin([pd.to_datetime(day, format='%Y-%m-%d')]).any():
         day = pd.to_datetime(day, format='%Y-%m-%d')
     else:
@@ -47,31 +50,49 @@ def summary(portfolio, day=date.today()):
     account = account[account['Date'] <= day ]
     portfolio = portfolio[portfolio['Date'] <= day]
 
-    account_negatif = account[account['Mouvements']<0]
-    dividend =  account[account['Description']=='Dividende']['Mouvements'].sum()
+    original_dividend =  account[account['Description']=='Dividende']['Mouvements'].sum()
+    converted_dividend =  account[(account['Description']=='Opération de change - Débit') & (account['Mouvements']>0)]['Mouvements'].sum()
     FM =  account[account['Description']=='Variation Fonds Monétaires (EUR)']['Mouvements'].sum()
     achats = account[account['Description'].str[0:5]=='Achat']['Mouvements'].sum()
-    change_operations_neg =  account_negatif[account_negatif['Description']=='Opération de change - Débit']['Mouvements'].sum()
-    change_operations_pos =  account[account['Description']=='Opération de change - Débit']['Mouvements'].sum() - change_operations_neg
     connexion_fees = account[account['Description'].str[0:40]=='Frais de connexion aux places boursières']['Mouvements'].sum()
     brokerage_fees = account[account['Description']=='Frais de courtage']['Mouvements'].sum()
     deposit = account[account['Description']=='Versement de fonds']['Mouvements'].sum()
     
-    last_date = portfolio.iloc[-1,]['Date']
-    last_portfolio = get_last_portfolio(portfolio, day)
-
-    if day == pd.to_datetime(date.today(), format='%Y-%m-%d'):
-        cash = last_cash
-    else:
-        cash = last_portfolio[last_portfolio['Produit']== 'CASH & CASH FUND (EUR)']['Amount'].values[0]
+    # last_date = portfolio.iloc[-1,]['Date']
     
-    total = last_portfolio[last_portfolio['Produit']== 'Total']['Amount'].values[0] + cash
-    portfolio_without_cash = last_portfolio[~last_portfolio['Produit'].isin(['CASH & CASH FUND (EUR)', 'Total', 'CASH & CASH FUND (USD)'])]['Amount'].sum() + monetary_funds_refund
-    gains = total - deposit
 
-    values = [total,deposit,gains,cash,portfolio_without_cash,change_operations_pos,monetary_funds_refund,dividend,achats,FM,brokerage_fees,connexion_fees,change_operations_neg]
-    values = [str(round(value, 2)) + ' €' for value in values]
-    names = ['Total','Deposit','Gains', 'Cash', 'Portfolio','Change operations+'  ,'Monetary funds refund' ,'Dividend','Buy','Monetary funds' ,'Brokerage fees' ,'Connexion fees' ,'Change operations-']
+    monetary_funds_refund = MFR if update_portfolio else 0
+    
+    if day == pd.to_datetime(date.today(), format='%Y-%m-%d'):
+        total, portfolio_without_cash, FM, cash, daily_gains, gains = live_data
+    else:
+        def get_cash(portfolio):
+            return portfolio[portfolio['Produit']== 'CASH & CASH FUND (EUR)']['Amount'].values[0]
+        
+        def get_total(portfolio, cash):
+            return portfolio[portfolio['Produit']== 'Total']['Amount'].values[0] + cash
+
+        last_portfolio = get_last_portfolio(portfolio, day)
+        previous_last_portfolio = get_last_portfolio(portfolio, day - timedelta(days=1))
+        cash = get_cash(last_portfolio)
+        total = get_total(last_portfolio, cash)
+        portfolio_without_cash = last_portfolio[~last_portfolio['Produit'].isin(['CASH & CASH FUND (EUR)', 'Total', 'CASH & CASH FUND (USD)'])]['Amount'].sum() + monetary_funds_refund
+        gains = total - deposit
+        
+        previous_total = get_total(previous_last_portfolio, get_cash(previous_last_portfolio))
+        previous_account = account[account['Date'] <= day - timedelta(days=1) ]
+        previous_deposit = previous_account[previous_account['Description']=='Versement de fonds']['Mouvements'].sum()
+        previous_gains = previous_total - previous_deposit
+        
+        daily_gains = gains - previous_gains     
+
+    values = [portfolio_without_cash, gains,converted_dividend, cash,achats,brokerage_fees,connexion_fees,monetary_funds_refund]
+    values = ['€ ' + str(round(value, 2))  for value in values]
+    names = ['Portfolio', 'Gains','Dividend', 'Cash', 'Buy','Brokerage fees' ,'Connexion fees', 'Monetary funds refund']
+    
+    daily_gains = '+' + str(round(daily_gains, 2)) if daily_gains >=0 else str(round(daily_gains, 2))
+    values[1] = values[1] + ' (' + daily_gains + ')'
+    
     table_content = [{'name': name,'value': value} for name, value in zip(names, values)]
 
     table = dash_table.DataTable(data=table_content, 
@@ -79,26 +100,19 @@ def summary(portfolio, day=date.today()):
                                columns=[{'name':'name', 'id':'name'}, {'name':'value', 'id':'value'}], 
                                style_cell={'textAlign': 'left', 'maxWidth': 20}, 
                                style_as_list_view=True,
-                               style_data_conditional=[
-                                                        {
-                                                            'if': {'row_index': [1,3,5,7,8,9,10,11]},
-                                                            'border-bottom': '3px'
-                                                        }],
-                                style_cell_conditional=[
-                                    {'if': {'column_id': 'value'},
-                                            'width': '20%'},
-                                ],
+                               style_data_conditional=[{'if': {'row_index': [1,2,4,5]},'border-bottom': '3px'}],
+                                style_cell_conditional=[{'if': {'column_id': 'value'},'width': '20%'},],
                                 style_header={'display':'none'}
                                 )
     return table, table.data, table.columns
 
-def retrieve_portfolio_record(sessionID, start_date=date(2020, 1, 9), end_date=date.today()):
+def retrieve_portfolio_record(sessionID, start_date=CREATION_DATE, end_date=date.today()):
     delta = end_date - start_date
     days = [start_date + timedelta(days=i) for i in range(delta.days + 1)]
     columns = ['Produit', 'Ticker/ISIN', 'Quantité', 'Clôture', 'Devise', 'Montant en EUR']
 
     portfolio = pd.DataFrame()
-    for day in days:
+    for day in tqdm(days):
         link = f"""https://trader.degiro.nl/reporting/secure/v3/positionReport/csv
                 ?intAccount=11034964
                 &sessionId={sessionID}
@@ -126,7 +140,12 @@ def retrieve_portfolio_record(sessionID, start_date=date(2020, 1, 9), end_date=d
 
 def update_portfolio_record(sessionID, start_date='last', end_date=date.today()+timedelta(days=-1)):
     
-    portfolio = pd.read_csv('portfolio_records.csv', index_col=0)
+    if os.path.isfile('portfolio_records.csv'):
+        portfolio = pd.read_csv('portfolio_records.csv', index_col=0)
+    else:
+        columns = ['Produit', 'Ticker/ISIN', 'Quantité', 'Clôture', 'Devise', 'Montant en EUR','Date']
+        portfolio = pd.DataFrame(columns=columns)
+        start_date=CREATION_DATE
 
     if start_date == 'last':
         start_date = datetime.datetime.strptime(portfolio.iloc[-1,]['Date'], '%d-%m-%Y') 
@@ -149,7 +168,7 @@ def update_portfolio_record(sessionID, start_date='last', end_date=date.today()+
         print(f'start date: {start_date} bigger than end date: {end_date}')
 
 
-def retrieve_account_records(sessionID, start_date=date(2020, 1, 9), end_date=date.today()):
+def retrieve_account_records(sessionID, start_date=CREATION_DATE, end_date=date.today()):
     link = f"""https://trader.degiro.nl/reporting/secure/v3/cashAccountReport/csv
             ?intAccount=11034964
             &sessionId={sessionID}
@@ -318,22 +337,24 @@ update_portfolio = FLAGS.update
 debug = FLAGS.debug
 live = FLAGS.live
 
-portfolio = add_gains_and_total()
 
 if update_portfolio or live:
     webparser = webparser(debug)
     if update_portfolio:
         print('>>updating portfolio')
         sessionID = webparser.get_session_ID()
+        MFR = webparser.get_monetary_funds()
         update(sessionID)
 
     if live:
         positions = webparser.get_positions()
-        # webparser.get_monetary_funds()
-        last_cash = webparser.get_account_summary()
+        live_data = webparser.get_account_summary()
 
-        portfolio = pd.concat((portfolio, positions))
     webparser.quit()    
+
+portfolio = add_gains_and_total()
+if live:
+    portfolio = pd.concat((portfolio, positions))
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
