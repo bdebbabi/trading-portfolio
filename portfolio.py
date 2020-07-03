@@ -1,9 +1,6 @@
 import pandas as pd
 import numpy as np 
-import seaborn as sns
 import datetime
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 from datetime import date, timedelta
 from urllib.request import urlopen, Request
 import requests
@@ -331,13 +328,20 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--update', type=str, help='Whether or not to update the portfolio', default=False)
 parser.add_argument('--debug', type=int, help='Debug level', default=0)
 parser.add_argument('--live', type=str, help='Live positions', default=False)
+parser.add_argument('--mobile', type=str, help='Whether or not to update update portfolio in mobile version', default=False)
 FLAGS = parser.parse_args()
 
 update_portfolio = FLAGS.update
 debug = FLAGS.debug
 live = FLAGS.live
+mobile = FLAGS.mobile
 
-
+if mobile:
+    mobile_parser = mobile_parser(debug)
+    print('>>updating portfolio')
+    sessionID = mobile_parser.get_session_ID()
+    update(sessionID)
+    
 if update_portfolio or live:
     webparser = webparser(debug)
     if update_portfolio:

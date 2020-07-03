@@ -9,6 +9,7 @@ import base64
 import re
 import pandas as pd
 from time import sleep 
+import json
 
 class webparser:
 
@@ -144,3 +145,22 @@ class webparser:
     def quit(self):
         # self.driver.quit()
         self.driver.close()
+
+class mobile_parser():
+
+    def __init__(self, debug):
+        self.debug = debug
+    
+    def get_session_ID(self):
+        with open('pass.bin', 'r') as file:
+            username, password, key = [base64.b64decode(line).decode("utf-8") for line in file]
+    
+        data = {"username":username,"password":password,"oneTimePassword":key}
+        data = json.dumps(data)
+        url = 'https://trader.degiro.nl/login/secure/login/totp'
+        headers={'Content-Type': 'application/json'}
+        
+        session = requests.Session()
+        r = session.post(url,headers=headers,data=data)
+
+        return r.cookies['JSESSIONID']
