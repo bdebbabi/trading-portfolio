@@ -1,9 +1,3 @@
-from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
 from pyotp import *
 import base64
 import re
@@ -11,158 +5,128 @@ import pandas as pd
 from time import sleep 
 import json
 import requests
+import numpy as np
+from datetime import date, datetime
 
 class webparser:
 
     def __init__(self, debug):
         self.debug = debug
+        self.account = '11034964'
+        self.headers = {'Content-Type': 'application/json'}
         self.login()
 
     def login(self):
         with open('pass.bin', 'r') as file:
             username, password, key = [base64.b64decode(line).decode("utf-8") for line in file]
 
-
-        options = Options()
-        #options.add_argument('--start-maximized')
-        if self.debug < 2:
-            options.add_argument('--headless')
-        
-        self.driver = webdriver.Chrome(chrome_options=options)
-        self.driver.set_window_size(1920, 1080)
-        
-        self.driver.get("https://trader.degiro.nl/trader/#/portfolio")
-        wait = WebDriverWait(self.driver, 100)
-
-        wait.until(EC.presence_of_element_located((By.ID, 'username')))
-        self.driver.find_element_by_id('username').send_keys(username)
-        self.driver.find_element_by_id ('password').send_keys(password)
-
-        wait.until(EC.presence_of_element_located((By.NAME, 'loginButtonUniversal')))
-        self.driver.find_element_by_name('loginButtonUniversal').click()
-
-        wait.until(EC.presence_of_element_located((By.NAME, 'oneTimePassword')))
         totp = TOTP(key)
         token = totp.now()
 
-        self.driver.find_element_by_css_selector("input[type='tel']").send_keys(token)
-        self.driver.find_element_by_xpath("//button[@type='submit']").click()
-        
-        
-    def go_to_portfolio(self):
-        wait = WebDriverWait(self.driver, 100)
-        
-        wait.until(EC.presence_of_element_located((By.ID, 'appWorkspace')))
-        self.driver.get("https://trader.degiro.nl/trader/#/portfolio")
-        wait.until(EC.presence_of_element_located((By.ID, 'appWorkspace')))
+        data = json.dumps({"username":username,"password":password,"oneTimePassword":token})
+        url = 'https://trader.degiro.nl/login/secure/login/totp'
 
+        self.session = requests.Session()
+        response = self.session.post(url,headers=self.headers,data=data)
+        self.sessionID = response.cookies["JSESSIONID"]
+        
+        url = f'https://trader.degiro.nl/pa/secure/client?sessionId={self.sessionID}'
+        client_info = self.session.get(url)
+        self.userToken = json.loads(client_info.text)['data']['id']
 
     def get_session_ID(self):
+        return self.sessionID
 
-        self.go_to_portfolio()
+    def get_stock_info(self,stock_id):
+        session = requests.Session()
+        resolution = 'PT1S' 
+        period = 'P1D'
+        series = ['issueid%3A' + stock_id, 'price%3Aissueid%3A' + stock_id]
+        url = f'''https://charting.vwdservices.com/hchart/v1/deGiro/data.js?
+                requestid=1&
+                resolution={resolution}&
+                culture=fr-FR&
+                period={period}&
+                series={series[0]}&
+                series={series[1]}&
+                format=json&
+                callback=vwd.hchart.seriesRequestManager.sync_response&
+                userToken={self.userToken}&
+                tz=Europe%2FAmsterdam'''
+        url = ''.join(url.split())
+        stock_info = json.loads(session.get(url).text[46:-1])
+
+        return stock_info
+    
+    def get_last_price(self,stock_id):
+        stock_info = self.get_stock_info(stock_id)
+        last_price = stock_info['series'][0]['data']['lastPrice']
         
-        wait = WebDriverWait(self.driver, 100)
-
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button[data-name='exportButton']")))
-        self.driver.find_element_by_xpath("//button[@data-name='exportButton']").click()
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-name='reportExportForm']")))
-
-        link = self.driver.find_element_by_css_selector("div[data-name='reportExportForm']").find_elements_by_tag_name('a')[0]
-        sessionID = re.search('sessionId=(.*)&country=', link.get_attribute("href")).group(1)
-
-        return sessionID
+        return last_price
 
     def get_positions(self):
 
-        self.go_to_portfolio()
-        
-        wait = WebDriverWait(self.driver, 100)
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-name='positions']")))
-        sleep(2)
+        url = f'https://trader.degiro.nl/trading/secure/v5/update/{self.account};jsessionid={self.sessionID}'
+        portfolio_query = self.session.get(url,params={'portfolio':0})
+        portfolio = json.loads(portfolio_query.text)['portfolio']['value']
+        portfolio = self._add_positions_details(portfolio)
 
-        position_tables = self.driver.find_elements_by_css_selector("div[data-name='positions']")
-        positions = []
-        for position_table in position_tables:
-            tds = position_table.find_elements_by_tag_name('td')
-            for td in tds:
-                time = td.find_elements_by_tag_name('time')
-                if time:
-                    positions.append(time[0].get_attribute('datetime'))
-                positions.append(td.text)
-        
-        positions = self.clean_positions(positions)
+        positions = self._clean_positions(portfolio)
         return positions
     
-    def clean_positions(self, positions, normalize=True):
-        positions = [positions[i: i+12] for i in range(0, len(positions), 15)]
-        positions = pd.DataFrame(positions, columns=['Produit', 'Place', 'Quantité','Price','Currency', 'Amount', 'PRU', '+/-', '+/-%', 'Gains without fees', 'Gains','Date'])
-        positions['Produit'] = positions['Produit'].str[4:-2].str[:31].str.upper()
-        positions.loc[positions['Produit'].str.len()==31, 'Produit'] = positions['Produit'].str.ljust(34,'.')
-        positions['Gains without fees (%)'] = positions['Gains without fees'].str.partition('(')[2].str[:-2]
-        positions['Gains without fees'] = positions['Gains without fees'].str.partition('(')[0]
-        positions['+/-%'] = positions['+/-%'].str[:-1]
-        positions['Quantité'] = positions['Quantité'].astype(int)
-        positions['Price'] = positions['Price'].str[2:]
-        positions['Date'] = pd.to_datetime(positions['Date']).dt.tz_convert("Europe/Paris").dt.tz_localize(None)
-
-        if normalize:
-            positions['Date'] = positions['Date'].dt.normalize()   
-        for column in ['Price','Amount','PRU','+/-','+/-%','Gains without fees','Gains', 'Gains without fees (%)']:
-            positions[column] = positions[column].str.replace(',','.').astype(float)
-
-        positions['Gains (%)'] = (positions['Gains']/(positions['Amount'] - positions['Gains'])).round(2)
+    def _add_positions_details(self,portfolio):
+        products = {}
+        for product in portfolio:
+            url = f'https://trader.degiro.nl/product_search/secure/v5/products/info?intAccount={self.account}&sessionId={self.sessionID}'
+            res = self.session.post(url,headers=self.headers,data='["'+product["id"]+'"]')
+            product_data = json.loads(res.text)['data'][product["id"]]
+            product_value = {p['name']: p['value'] if 'value' in p.keys() else None for p in product['value']}
+            product_value = {key:value['EUR'] if isinstance(value, dict) else value for key, value in product_value.items()}
+            if product_value['positionType'] == 'PRODUCT':
+                last_price = self.get_last_price(product_data['vwdId'])
+                product_value['price'] = last_price
+                product_value['value'] = last_price * product_value['size']
+                products[product_data['name']] = product_value
+                products[product_data['name']].update(product_data)
         
+        self.products = products
+        return products
+
+    def _clean_positions(self, positions):
+        keys = ['name', 'value','isin', 'size', 'closePrice', 'currency','plBase','realizedProductPl']
+        
+        positions = pd.DataFrame([[value[k] for k in keys] for value in positions.values()], columns=keys)
+        
+        positions['Gains'] = (positions['value'] + positions['plBase']).round(2) 
+        positions['Gains (%)'] = (positions['Gains'] / (-positions['plBase'])).round(2)
+        positions['Gains without fees'] = (positions['Gains'] - positions['realizedProductPl']).round(2) 
+        positions['Gains without fees (%)'] = (100*positions['Gains without fees'] / (-positions['plBase'])).round(2)
+        positions['name'] = positions['name'].str[:31].str.upper().str.replace(' +',' ')
+        positions.loc[positions['name'].str.len()==31, 'name'] = positions['name'].str.ljust(34,'.')
+        positions['Date'] = pd.to_datetime(date.today())
+        
+        positions = positions.drop(columns=['plBase', 'realizedProductPl'])
+        
+        positions = positions.rename(columns={'name':'Produit', 'value':'Amount','isin':'Ticker/ISIN', 'size':'Quantité', 'closePrice':'Clôture', 'currency':'Devise'})
+
         sum = positions.sum()
         total_row = {'Produit':'Total', 'Amount': round(sum['Amount'], 2), 'Gains without fees': round(sum['Gains without fees'], 2), 'Gains': round(sum['Gains'],2), 'Date': positions.iloc[0]['Date'], 'Gains (%)': round((sum['Gains']/(sum['Amount'] - sum['Gains'])), 2), 'Gains without fees (%)': round((sum['Gains without fees']/(sum['Amount'] - sum['Gains without fees']) * 100), 2) }
         positions = positions.append(total_row, ignore_index=True)
-        
+
         return positions
 
-    def get_monetary_funds(self):
-
-        accrued = self.driver.find_element_by_css_selector("span[data-id='accrued']")
-        accrued = float(accrued.text.replace(',','.'))
-        return accrued
 
     def get_account_summary(self):
-        wait = WebDriverWait(self.driver, 100)
-
-        # wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button[data-name='totalPortfolioToggle']")))
-        # self.driver.find_element_by_xpath("//button[@data-name='totalPortfolioToggle']").click()
-
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "section[data-name='accountSummary']")))
-        sleep(2)
-
-        summary = self.driver.find_elements_by_css_selector("section[data-name='accountSummary']")[0]
-
-        spans = summary.find_elements_by_css_selector("span[data-id='totalPortfolio']")
-        elements = [float(span.text[2:].replace(',','.')) for span in spans]
-
+        url = f'https://trader.degiro.nl/trading/secure/v5/update/{self.account};jsessionid={self.sessionID}'
+        totalPortfolio = self.session.get(url, params={'totalPortfolio':0})
         
-
-        # return portfolio_cash, portfolio, FM, cash, daily_gains, total_gains
-        return elements
-    
-    def quit(self):
-        # self.driver.quit()
-        self.driver.close()
-
-class mobile_parser():
-
-    def __init__(self, debug):
-        self.debug = debug
-    
-    def get_session_ID(self):
-        with open('pass.bin', 'r') as file:
-            username, password, key = [base64.b64decode(line).decode("utf-8") for line in file]
-        totp = TOTP(key)
-        token = totp.now()
-        data = {"username":username,"password":password,"oneTimePassword":token}
-        data = json.dumps(data)
-        url = 'https://trader.degiro.nl/login/secure/login/totp'
-        headers={'Content-Type': 'application/json'}
+        cash = json.loads(totalPortfolio.text)['totalPortfolio']['value'][0]['value']
+        cash_fund_compensation = json.loads(totalPortfolio.text)['totalPortfolio']['value'][2]['value']
+        total_non_product_fees = json.loads(totalPortfolio.text)['totalPortfolio']['value'][6]['value']
+        buy = np.array([value['plBase'] for product, value in self.products.items()]).sum()
+        portfolio_without_cash = np.array([value['value'] for product, value in self.products.items()]).sum() + cash_fund_compensation
+        gains = portfolio_without_cash + buy + total_non_product_fees - cash_fund_compensation
+        total = portfolio_without_cash + cash
         
-        session = requests.Session()
-        r = session.post(url,headers=headers,data=data)
-
-        return r.cookies['JSESSIONID']
+        return total, portfolio_without_cash, cash_fund_compensation, cash, gains, total_non_product_fees 
+    

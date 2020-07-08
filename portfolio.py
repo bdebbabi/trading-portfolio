@@ -6,14 +6,9 @@ from urllib.request import urlopen, Request
 import requests
 from io import StringIO
 import plotly.graph_objects as go
-import argparse
 import os.path 
 
 from datetime import datetime as dt
-import dash
-from dash.dependencies import Input, Output
-import dash_html_components as html
-import dash_core_components as dcc
 import re
 import plotly.express as px
 import dash_table
@@ -23,20 +18,22 @@ from parser import *
 
 CREATION_DATE = date(2020, 1, 9)
 
-def get_last_portfolio(portfolio, day):
-    if day == pd.to_datetime(date.today(), format='%Y-%m-%d'):
-        last_portfolio = portfolio.drop_duplicates('Produit', 'last')
-        last_portfolio = last_portfolio.drop(last_portfolio[~last_portfolio['Produit'].isin(positions['Produit'].unique())].index, axis=0)
-    else:
-        last_portfolio = portfolio[portfolio['Date']==day]
-    return last_portfolio
+def get_day_portfolio(portfolio, day):
+    day_portfolio = portfolio[portfolio['Date']==day]
+    return day_portfolio
 
-def summary(portfolio, day=date.today()):
+def summary(portfolio, day=date.today(), live_data=None):
+    def get_cash(portfolio):
+        return portfolio[portfolio['Produit']== 'CASH & CASH FUND (EUR)']['Amount'].values[0]
+        
+    def get_total(portfolio, cash):
+        return portfolio[portfolio['Produit']== 'Total']['Amount'].values[0] + cash
+
+
     if portfolio['Date'].isin([pd.to_datetime(day, format='%Y-%m-%d')]).any():
         day = pd.to_datetime(day, format='%Y-%m-%d')
     else:
         day = pd.to_datetime(portfolio['Date'].iloc[-1], format='%d-%m-%Y')
-
 
     account = pd.read_csv('account.csv', index_col=0)
     # portfolio = pd.read_csv('portfolio_records.csv', index_col=0)
@@ -47,45 +44,37 @@ def summary(portfolio, day=date.today()):
     account = account[account['Date'] <= day ]
     portfolio = portfolio[portfolio['Date'] <= day]
 
-    original_dividend =  account[account['Description']=='Dividende']['Mouvements'].sum()
+    #original_dividend =  account[account['Description']=='Dividende']['Mouvements'].sum()
     converted_dividend =  account[(account['Description']=='Opération de change - Débit') & (account['Mouvements']>0)]['Mouvements'].sum()
     FM =  account[account['Description']=='Variation Fonds Monétaires (EUR)']['Mouvements'].sum()
     achats = account[account['Description'].str[0:5]=='Achat']['Mouvements'].sum()
-    connexion_fees = account[account['Description'].str[0:40]=='Frais de connexion aux places boursières']['Mouvements'].sum()
+    total_non_product_fees = account[account['Description'].str[0:40]=='Frais de connexion aux places boursières']['Mouvements'].sum()
     brokerage_fees = account[account['Description']=='Frais de courtage']['Mouvements'].sum()
     deposit = account[account['Description']=='Versement de fonds']['Mouvements'].sum()
     
     # last_date = portfolio.iloc[-1,]['Date']
     
-
-    monetary_funds_refund = MFR if update_portfolio else 0
-    
-    if day == pd.to_datetime(date.today(), format='%Y-%m-%d'):
-        total, portfolio_without_cash, FM, cash, daily_gains, gains = live_data
+    cash_fund_compensation = -FM
+    previous_last_portfolio = get_day_portfolio(portfolio, day - timedelta(days=1))
+    if day == pd.to_datetime(date.today(), format='%Y-%m-%d') and live_data:
+        total, portfolio_without_cash, cash_fund_compensation, cash, gains, total_non_product_fees = live_data
     else:
-        def get_cash(portfolio):
-            return portfolio[portfolio['Produit']== 'CASH & CASH FUND (EUR)']['Amount'].values[0]
-        
-        def get_total(portfolio, cash):
-            return portfolio[portfolio['Produit']== 'Total']['Amount'].values[0] + cash
-
-        last_portfolio = get_last_portfolio(portfolio, day)
-        previous_last_portfolio = get_last_portfolio(portfolio, day - timedelta(days=1))
+        last_portfolio = get_day_portfolio(portfolio, day)
         cash = get_cash(last_portfolio)
         total = get_total(last_portfolio, cash)
-        portfolio_without_cash = last_portfolio[~last_portfolio['Produit'].isin(['CASH & CASH FUND (EUR)', 'Total', 'CASH & CASH FUND (USD)'])]['Amount'].sum() + monetary_funds_refund
+        portfolio_without_cash = last_portfolio[~last_portfolio['Produit'].isin(['CASH & CASH FUND (EUR)', 'Total', 'CASH & CASH FUND (USD)'])]['Amount'].sum() + cash_fund_compensation
         gains = total - deposit
-        
-        previous_total = get_total(previous_last_portfolio, get_cash(previous_last_portfolio))
-        previous_account = account[account['Date'] <= day - timedelta(days=1) ]
-        previous_deposit = previous_account[previous_account['Description']=='Versement de fonds']['Mouvements'].sum()
-        previous_gains = previous_total - previous_deposit
-        
-        daily_gains = gains - previous_gains     
+    
+    previous_total = get_total(previous_last_portfolio, get_cash(previous_last_portfolio))
+    previous_account = account[account['Date'] <= day - timedelta(days=1) ]
+    previous_deposit = previous_account[previous_account['Description']=='Versement de fonds']['Mouvements'].sum()
+    previous_gains = previous_total - previous_deposit
+    
+    daily_gains = gains - previous_gains     
 
-    values = [portfolio_without_cash, gains,converted_dividend, cash,achats,brokerage_fees,connexion_fees,monetary_funds_refund]
+    values = [portfolio_without_cash, gains,converted_dividend, cash,achats,brokerage_fees,total_non_product_fees,cash_fund_compensation]
     values = ['€ ' + str(round(value, 2))  for value in values]
-    names = ['Portfolio', 'Gains','Dividend', 'Cash', 'Buy','Brokerage fees' ,'Connexion fees', 'Monetary funds refund']
+    names = ['Portfolio', 'Gains','Dividend', 'Cash', 'Buy','Brokerage fees' ,'Total non product fees', 'Monetary funds refund']
     
     daily_gains = '+' + str(round(daily_gains, 2)) if daily_gains >=0 else str(round(daily_gains, 2))
     values[1] = values[1] + ' (' + daily_gains + ')'
@@ -145,7 +134,7 @@ def update_portfolio_record(sessionID, start_date='last', end_date=date.today()+
         start_date=CREATION_DATE
 
     if start_date == 'last':
-        start_date = datetime.datetime.strptime(portfolio.iloc[-1,]['Date'], '%d-%m-%Y') 
+        start_date = datetime.strptime(portfolio.iloc[-1,]['Date'], '%d-%m-%Y') 
         start_date = date(start_date.year, start_date.month, start_date.day)
     
     if start_date <= end_date:
@@ -189,72 +178,82 @@ def retrieve_account_records(sessionID, start_date=CREATION_DATE, end_date=date.
 
 
 def add_gains_and_total():
-        portfolio = pd.read_csv('portfolio_records.csv', index_col=0)
-        portfolio['Date'] = pd.to_datetime(portfolio['Date'], format='%d-%m-%Y')
-        cash = portfolio[portfolio['Produit'].isin(['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)'])]
-        portfolio = portfolio.drop(portfolio[portfolio['Produit'].isin(['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)'])].index, axis=0)
+    portfolio = pd.read_csv('portfolio_records.csv', index_col=0)
+    portfolio['Date'] = pd.to_datetime(portfolio['Date'], format='%d-%m-%Y')
+    cash = portfolio[portfolio['Produit'].isin(['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)'])]
+    portfolio = portfolio.drop(portfolio[portfolio['Produit'].isin(['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)'])].index, axis=0)
 
-        account = pd.read_csv('account.csv', index_col=0)
-        account['Date'] = pd.to_datetime(account['Date'], format='%d-%m-%Y')
+    account = pd.read_csv('account.csv', index_col=0)
+    account['Date'] = pd.to_datetime(account['Date'], format='%d-%m-%Y')
 
-        expenses=[]
-        buys=[]
+    expenses=[]
+    buys=[]
 
-        for _, p in portfolio.iterrows():
-                expenses.append(account[(account['Date'] <= pd.to_datetime(p['Date'], format='%d-%m-%Y')) 
-                        & (account['Code ISIN']==p['Ticker/ISIN'])]['Mouvements'].sum())
+    for _, p in portfolio.iterrows():
+            expenses.append(account[(account['Date'] <= pd.to_datetime(p['Date'], format='%d-%m-%Y')) 
+                    & (account['Code ISIN']==p['Ticker/ISIN'])]['Mouvements'].sum())
 
-                buys.append(account[(account['Date'] <= pd.to_datetime(p['Date'], format='%d-%m-%Y')) 
-                        & (account['Code ISIN']==p['Ticker/ISIN'])
-                        & (account['Description'].str[0:5]=='Achat')]['Mouvements'].sum())
-        
-        portfolio['Gains'] = expenses + portfolio['Montant en EUR']
-        portfolio['Gains without fees'] = buys + portfolio['Montant en EUR']
+            buys.append(account[(account['Date'] <= pd.to_datetime(p['Date'], format='%d-%m-%Y')) 
+                    & (account['Code ISIN']==p['Ticker/ISIN'])
+                    & (account['Description'].str[0:5]=='Achat')]['Mouvements'].sum())
+    
+    portfolio['Gains'] = expenses + portfolio['Montant en EUR']
+    portfolio['Gains without fees'] = buys + portfolio['Montant en EUR']
 
 
-        gains = []
-        gains_without_fees = []
-        portfolio_amount = []
+    gains = []
+    gains_without_fees = []
+    portfolio_amount = []
 
-        for day in portfolio['Date'].unique():
-                gains.append(portfolio[portfolio['Date'] == day ]['Gains'].sum())
-                gains_without_fees.append(portfolio[portfolio['Date'] == day]['Gains without fees'].sum())
-                portfolio_amount.append(portfolio[portfolio['Date'] == day]['Montant en EUR'].sum())
+    for day in portfolio['Date'].unique():
+            gains.append(portfolio[portfolio['Date'] == day ]['Gains'].sum())
+            gains_without_fees.append(portfolio[portfolio['Date'] == day]['Gains without fees'].sum())
+            portfolio_amount.append(portfolio[portfolio['Date'] == day]['Montant en EUR'].sum())
 
-        total_gains = pd.DataFrame([['Total',d,g,gf,a] for d,g,gf,a in zip(portfolio['Date'].dt.strftime('%Y-%m-%d').unique().tolist(), 
-                                                                        gains, 
-                                                                        gains_without_fees,
-                                                                        portfolio_amount)], 
-                                  columns=['Produit','Date','Gains', 'Gains without fees', 'Montant en EUR'])
-        
-        total_gains['Date'] = pd.to_datetime(total_gains['Date'], format='%Y-%m-%d')
-        portfolio = pd.concat([total_gains, portfolio])
+    total_gains = pd.DataFrame([['Total',d,g,gf,a] for d,g,gf,a in zip(portfolio['Date'].dt.strftime('%Y-%m-%d').unique().tolist(), 
+                                                                    gains, 
+                                                                    gains_without_fees,
+                                                                    portfolio_amount)], 
+                                columns=['Produit','Date','Gains', 'Gains without fees', 'Montant en EUR'])
+    
+    total_gains['Date'] = pd.to_datetime(total_gains['Date'], format='%Y-%m-%d')
+    portfolio = pd.concat([total_gains, portfolio])
 
-        portfolio['Gains'] = portfolio['Gains'].round(2) 
-        portfolio['Gains without fees'] = portfolio['Gains without fees'].round(2) 
+    portfolio['Gains'] = portfolio['Gains'].round(2) 
+    portfolio['Gains without fees'] = portfolio['Gains without fees'].round(2) 
 
-        portfolio['Gains (%)'] = (portfolio['Gains']/(portfolio['Montant en EUR'] - portfolio['Gains'])).round(2)
-        portfolio['Gains without fees (%)'] = (portfolio['Gains without fees']/(portfolio['Montant en EUR'] - portfolio['Gains without fees']) * 100).round(2)
+    portfolio['Gains (%)'] = (portfolio['Gains']/(portfolio['Montant en EUR'] - portfolio['Gains'])).round(2)
+    portfolio['Gains without fees (%)'] = (portfolio['Gains without fees']/(portfolio['Montant en EUR'] - portfolio['Gains without fees']) * 100).round(2)
 
-        portfolio['Complete gains'] = portfolio['Gains'].astype(str) + ' € (' + portfolio['Gains (%)'].astype(str) + ' %)'
-        portfolio['Complete gains without fees'] = portfolio['Gains without fees'].astype(str) + ' € (' + portfolio['Gains without fees (%)'].astype(str) + ' %)'
-        
-        portfolio = pd.concat((portfolio, cash))
+    portfolio['Complete gains'] = portfolio['Gains'].astype(str) + ' € (' + portfolio['Gains (%)'].astype(str) + ' %)'
+    portfolio['Complete gains without fees'] = portfolio['Gains without fees'].astype(str) + ' € (' + portfolio['Gains without fees (%)'].astype(str) + ' %)'
+    
+    portfolio = pd.concat((portfolio, cash))
 
-        portfolio = portfolio.rename(columns={'Montant en EUR':'Amount'})
+    portfolio = portfolio.rename(columns={'Montant en EUR':'Amount'})
+    portfolio = portfolio.reset_index()
 
-        return portfolio
+    return portfolio
+
+def add_gains_variation(portfolio):
+    portfolio['Gains variation'] = 0
+    for product in portfolio['Produit'].unique():
+        if product not in ['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)']:
+            p = portfolio[portfolio['Produit'] == product]
+            portfolio.loc[p.index,'Gains variation'] = np.array(p['Gains'] - p.shift(periods=1, fill_value=0)['Gains']).round(2)
+
+    return portfolio
 
 def portfolio_variation(metric, portfolio):
 
     if metric == 'Gains':
-        hover_data = ['Gains without fees'] 
+        hover_data = ['Gains without fees', 'Gains variation'] 
         title = 'Gains (without connexion fees)'
         tickformat = '€'
 
 
     elif metric == 'Gains (%)':
-        hover_data = ['Gains without fees (%)'] 
+        hover_data = ['Gains without fees (%)', 'Gains variation'] 
         title = 'Gains % (without connexion fees)'
         tickformat = '%'
     else:
@@ -274,6 +273,10 @@ def portfolio_variation(metric, portfolio):
                     buttons=list([
                         dict(count=1,
                             label="1m",
+                            step="month",
+                            stepmode="backward"),
+                        dict(count=3,
+                            label="3m",
                             step="month",
                             stepmode="backward"),
                         dict(count=6,
@@ -308,13 +311,14 @@ def portfolio_composition(portfolio, day=date.today()):
     else:
         day = pd.to_datetime(portfolio['Date'].iloc[-1], format='%d-%m-%Y')
 
-    portfolio = get_last_portfolio(portfolio, day)
+    portfolio = get_day_portfolio(portfolio, day)
 
     fig = px.pie(portfolio.drop(portfolio[portfolio['Produit'].isin(['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)', 'Total'])].index, axis=0),
                 values='Amount', names='Produit', 
                 title=f'Portfolio composition {day.strftime("%d-%m-%Y")}',
-                hover_data=['Quantité'],
-                labels={'Produit':'Product', 'Quantité': 'Quantity' })
+                hover_data=['Gains variation'],
+                labels={'Produit':'Product'})
+    # fig.update_layout(showlegend=False)
     # fig.show()
     return fig
     
@@ -322,104 +326,3 @@ def update(sessionID):
     if sessionID:
         retrieve_account_records(sessionID=sessionID)
         update_portfolio_record(sessionID=sessionID)
-
-parser = argparse.ArgumentParser()
-
-parser.add_argument('--update', type=str, help='Whether or not to update the portfolio', default=False)
-parser.add_argument('--debug', type=int, help='Debug level', default=0)
-parser.add_argument('--live', type=str, help='Live positions', default=False)
-parser.add_argument('--mobile', type=str, help='Whether or not to update update portfolio in mobile version', default=False)
-FLAGS = parser.parse_args()
-
-update_portfolio = FLAGS.update
-debug = FLAGS.debug
-live = FLAGS.live
-mobile = FLAGS.mobile
-
-if mobile:
-    mobile_parser = mobile_parser(debug)
-    print('>>updating portfolio')
-    sessionID = mobile_parser.get_session_ID()
-    update(sessionID)
-    
-if update_portfolio or live:
-    webparser = webparser(debug)
-    if update_portfolio:
-        print('>>updating portfolio')
-        sessionID = webparser.get_session_ID()
-        MFR = webparser.get_monetary_funds()
-        update(sessionID)
-
-    if live:
-        positions = webparser.get_positions()
-        live_data = webparser.get_account_summary()
-
-    webparser.quit()    
-
-portfolio = add_gains_and_total()
-if live:
-    portfolio = pd.concat((portfolio, positions))
-
-external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
-# initial_day = datetime.datetime.strptime(portfolio['Date'].iloc[-1], '%d-%m-%Y')
-summary_width = '60%' if mobile else '30%'
-portfolio_composition_width = '100%' if mobile else '70%'
-display = 'block' if mobile else 'flex'
-initial_day = portfolio['Date'].iloc[-1]
-app.layout = html.Div([
-    html.H1(children='Portfolio', style={'margin-left': '100px'}),
-    dcc.DatePickerSingle(
-            id='my-date-picker-single',
-            min_date_allowed=dt(2020, 1, 10),
-            max_date_allowed=initial_day,
-            initial_visible_month=initial_day,
-            date=str(initial_day),
-            display_format='DD-MM-YYYY',
-            style={'margin-left': '100px', 'width': '50%', 'display':'inline-block', 'margin-bottom':'20px'}
-            ),
-    html.Div([
-        html.Div([html.H6(children='Summary'),summary(portfolio)[0]], style={'margin-left': '100px', 'width': summary_width, 'display':'inline-block'}),
-        html.Div([dcc.Graph(id='portfolio_composition', figure=portfolio_composition(portfolio), style={ 'display':'inline-block'}),], 
-        style={'width': portfolio_composition_width, 'display':'inline-block', 'margin-left': '100px'})
-    ],style={'display': display}),
-    dcc.Graph(id='Gains', figure=portfolio_variation('Gains', portfolio)),
-    dcc.Graph(id='Gains%', figure=portfolio_variation('Gains (%)', portfolio)),
-    dcc.Graph(id='Amount', figure=portfolio_variation('Amount', portfolio)),
-    dcc.Interval(
-                id='interval-component',
-                interval=1*1000, # in milliseconds
-                n_intervals=0
-            )
-    
-])
-
-
-@app.callback(Output('portfolio_composition', 'figure'),[Input('my-date-picker-single', 'date')])
-def update_portfolio_composition(date):
-    if date is not None:
-        date = dt.strptime(re.split('T| ', date)[0], '%Y-%m-%d')
-        return portfolio_composition(portfolio, date)
-
-@app.callback(Output('summary_table', 'data'),[Input('my-date-picker-single', 'date')])
-def update_table_data(date):
-    if date is not None:
-        date = dt.strptime(re.split('T| ', date)[0], '%Y-%m-%d')
-        return summary(portfolio, date)[1]
-
-@app.callback(Output('summary_table', 'columns'),[Input('my-date-picker-single', 'date')])
-def update_table_columns(date):
-    if date is not None:
-        date = dt.strptime(re.split('T| ', date)[0], '%Y-%m-%d')
-        return summary(portfolio, date)[2]
-
-
-# @app.callback(Output('Gains', 'children'),[Input('interval-component', 'n_intervals')])
-# def update_portfolio_data(n):
-#     new_positions = webparser.get_positions()
-#     portfolio = pd.concat((portfolio, new_positions))
-
-
-if __name__ == '__main__':
-    app.run_server(debug=True)
