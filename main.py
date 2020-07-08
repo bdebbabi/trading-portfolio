@@ -34,6 +34,8 @@ if update_portfolio or live:
     if live:
         positions, live_stock_info = web_parser.get_positions()
         live_data = web_parser.get_account_summary()
+    else:
+        live_stock_info = None
     
 
 
@@ -67,7 +69,7 @@ app.layout = html.Div([
         html.Div([dcc.Graph(id='portfolio_composition', figure=portfolio_composition(portfolio), style={ 'display':'inline-block'}),], 
         style={'width': portfolio_composition_width, 'display':'inline-block', 'margin-left': '100px'})
     ],style={'display': display}),
-    html.Div([html.H6(children='Positions'),positions_summary(live_stock_info)[0]], style={'margin-left': '100px', 'width':'60%'}),
+    html.Div([html.H6(children='Positions'),positions_summary(live_stock_info)], style={'margin-left': '100px', 'width':'60%'}),
 
     dcc.Graph(id='Gains', figure=portfolio_variation('Gains', portfolio)),
     dcc.Graph(id='Gains%', figure=portfolio_variation('Gains (%)', portfolio)),

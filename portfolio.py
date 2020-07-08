@@ -12,6 +12,7 @@ from datetime import datetime as dt
 import re
 import plotly.express as px
 import dash_table
+import dash_html_components as html
 from tqdm import tqdm 
 
 from parser import *
@@ -110,36 +111,38 @@ def summary(portfolio, day=date.today(), live_data=None):
 def positions_summary(live_stock_info):
     def cell_color(column, condition, color):
         return {'if': {'filter_query': f'{{{column}}} contains "{condition}"','column_id': column},'color': color}
-    
-    for stock in live_stock_info:
-        for key, value in stock.items():
-            if key not in ['Size', 'Position', 'Gains']:
-                stock[key] = round(value*stock['Size'],2)
-        variation_p = add_sign(round((100*stock['absDiff'] / stock['previousClosePrice']),2))  
-        variation = add_sign(stock['absDiff'])  
-        stock['Daily gains'] = variation + ' ('+ variation_p + ' %)' 
+    if live_stock_info:
+        for stock in live_stock_info:
+            for key, value in stock.items():
+                if key not in ['Size', 'Position', 'Gains']:
+                    stock[key] = round(value*stock['Size'],2)
+            variation_p = add_sign(round((100*stock['absDiff'] / stock['previousClosePrice']),2))  
+            variation = add_sign(stock['absDiff'])  
+            stock['Daily gains'] = variation + ' ('+ variation_p + ' %)' 
 
-    table = dash_table.DataTable(data=live_stock_info, 
-                               id = 'positions_summary_table',
-                               columns=[{'name':'Postion', 'id':'Position'},
-                                        {'name':'Last', 'id':'lastPrice'}, 
-                                        {'name':'Daily gains', 'id':'Daily gains'}, 
-                                        {'name':'Total gains', 'id':'Gains'}, 
-                                        {'name':'Low', 'id':'lowPrice'},
-                                        {'name':'High', 'id':'highPrice'}, 
-                                        {'name':'1 year low', 'id':'lowPriceP1Y'}, 
-                                        {'name':'1 year high', 'id':'highPriceP1Y'}, 
-                                        {'name':'Quantity', 'id':'Size'}, 
-                                    ], 
-                               style_cell={'textAlign': 'left'}, 
-                               style_as_list_view=True,
-                               style_data_conditional=[cell_color('Gains', '-', 'red'),
-                                                        cell_color('Gains', '+', 'green'),
-                                                        cell_color('Daily gains', '-', 'red'),
-                                                        cell_color('Daily gains', '+', 'green')],
-                               
-                                )
-    return table, table.data, table.columns
+        table = dash_table.DataTable(data=live_stock_info, 
+                                id = 'positions_summary_table',
+                                columns=[{'name':'Postion', 'id':'Position'},
+                                            {'name':'Last', 'id':'lastPrice'}, 
+                                            {'name':'Daily gains', 'id':'Daily gains'}, 
+                                            {'name':'Total gains', 'id':'Gains'}, 
+                                            {'name':'Low', 'id':'lowPrice'},
+                                            {'name':'High', 'id':'highPrice'}, 
+                                            {'name':'1 year low', 'id':'lowPriceP1Y'}, 
+                                            {'name':'1 year high', 'id':'highPriceP1Y'}, 
+                                            {'name':'Quantity', 'id':'Size'}, 
+                                        ], 
+                                style_cell={'textAlign': 'left'}, 
+                                style_as_list_view=True,
+                                style_data_conditional=[cell_color('Gains', '-', 'red'),
+                                                            cell_color('Gains', '+', 'green'),
+                                                            cell_color('Daily gains', '-', 'red'),
+                                                            cell_color('Daily gains', '+', 'green')],
+                                
+                                    )
+        return table
+    else:
+        return html.P('No live data.')
 
 def retrieve_portfolio_record(sessionID, start_date=CREATION_DATE, end_date=date.today()):
     delta = end_date - start_date
