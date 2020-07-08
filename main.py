@@ -6,7 +6,7 @@ import dash_core_components as dcc
 from datetime import datetime as dt
 import re
 import pandas as pd
-from portfolio import update, add_gains_and_total, summary, portfolio_composition, portfolio_variation, add_gains_variation
+from portfolio import update, add_gains_and_total, summary, portfolio_composition, portfolio_variation, add_gains_variation, positions_summary
 from parser import webparser
 import ast
 parser = argparse.ArgumentParser()
@@ -32,7 +32,7 @@ if update_portfolio or live:
         update(sessionID)
 
     if live:
-        positions = web_parser.get_positions()
+        positions, live_stock_info = web_parser.get_positions()
         live_data = web_parser.get_account_summary()
     
 
@@ -67,6 +67,8 @@ app.layout = html.Div([
         html.Div([dcc.Graph(id='portfolio_composition', figure=portfolio_composition(portfolio), style={ 'display':'inline-block'}),], 
         style={'width': portfolio_composition_width, 'display':'inline-block', 'margin-left': '100px'})
     ],style={'display': display}),
+    html.Div([html.H6(children='Positions'),positions_summary(live_stock_info)[0]], style={'margin-left': '100px', 'width':'60%'}),
+
     dcc.Graph(id='Gains', figure=portfolio_variation('Gains', portfolio)),
     dcc.Graph(id='Gains%', figure=portfolio_variation('Gains (%)', portfolio)),
     dcc.Graph(id='Amount', figure=portfolio_variation('Amount', portfolio)),

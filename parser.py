@@ -56,7 +56,10 @@ class webparser:
         url = ''.join(url.split())
         stock_info = json.loads(session.get(url).text[46:-1])
 
-        return stock_info
+        keys = ['lastPrice', 'highPrice', 'lowPrice','openPrice', 'absDiff', 'lowPriceP1Y', 'highPriceP1Y', 'previousClosePrice']
+        live_stock_info = {key:stock_info['series'][0]['data'][key] for key in keys}
+        
+        return live_stock_info
     
     def get_last_price(self,stock_id):
         stock_info = self.get_stock_info(stock_id)
@@ -69,13 +72,14 @@ class webparser:
         url = f'https://trader.degiro.nl/trading/secure/v5/update/{self.account};jsessionid={self.sessionID}'
         portfolio_query = self.session.get(url,params={'portfolio':0})
         portfolio = json.loads(portfolio_query.text)['portfolio']['value']
-        portfolio = self._add_positions_details(portfolio)
+        portfolio, live_stock_info  = self._add_positions_details(portfolio)
 
         positions = self._clean_positions(portfolio)
-        return positions
+        return positions, live_stock_info
     
     def _add_positions_details(self,portfolio):
         products = {}
+        live_stock_info = []
         for product in portfolio:
             url = f'https://trader.degiro.nl/product_search/secure/v5/products/info?intAccount={self.account}&sessionId={self.sessionID}'
             res = self.session.post(url,headers=self.headers,data='["'+product["id"]+'"]')
@@ -83,14 +87,23 @@ class webparser:
             product_value = {p['name']: p['value'] if 'value' in p.keys() else None for p in product['value']}
             product_value = {key:value['EUR'] if isinstance(value, dict) else value for key, value in product_value.items()}
             if product_value['positionType'] == 'PRODUCT':
-                last_price = self.get_last_price(product_data['vwdId'])
+                stock_info = self.get_stock_info(product_data['vwdId'])
+                last_price = stock_info['lastPrice']
                 product_value['price'] = last_price
                 product_value['value'] = last_price * product_value['size']
                 products[product_data['name']] = product_value
                 products[product_data['name']].update(product_data)
-        
+                stock_info['Position'] = product_data['name']
+                stock_info['Size'] = product_value['size']
+
+                gains = round((product_value['value'] + product_value['plBase']),2)
+                gains_p = round((100*gains / (-product_value['plBase'])),2)
+                gains = str(gains) if gains<=0 else '+' + str(gains)
+                gains_p = str(gains_p) if gains_p<=0 else '+' + str(gains_p)
+                stock_info['Gains'] =  gains + ' (' + gains_p +' %)'
+                live_stock_info.append(stock_info)
         self.products = products
-        return products
+        return products, live_stock_info
 
     def _clean_positions(self, positions):
         keys = ['name', 'value','isin', 'size', 'closePrice', 'currency','plBase','realizedProductPl']

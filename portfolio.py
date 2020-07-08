@@ -17,7 +17,13 @@ from tqdm import tqdm
 from parser import *
 
 CREATION_DATE = date(2020, 1, 9)
+def add_sign(item):
+    return str(item) if item <=0 else '+' + str(item)
 
+def color_formatting(value):
+    return {'if': {'filter_query': f'{{value}} contains "-"','column_id': value},'color': 'red'},\
+    {'if': {'filter_query': f'{{value}} contains "+"','column_id': value},'color': 'green'}
+    
 def get_day_portfolio(portfolio, day):
     day_portfolio = portfolio[portfolio['Date']==day]
     return day_portfolio
@@ -69,15 +75,20 @@ def summary(portfolio, day=date.today(), live_data=None):
     previous_account = account[account['Date'] <= day - timedelta(days=1) ]
     previous_deposit = previous_account[previous_account['Description']=='Versement de fonds']['Mouvements'].sum()
     previous_gains = previous_total - previous_deposit
-    
     daily_gains = gains - previous_gains     
-
-    values = [portfolio_without_cash, gains,converted_dividend, cash,achats,brokerage_fees,total_non_product_fees,cash_fund_compensation]
-    values = ['€ ' + str(round(value, 2))  for value in values]
-    names = ['Portfolio', 'Gains','Dividend', 'Cash', 'Buy','Brokerage fees' ,'Total non product fees', 'Monetary funds refund']
     
-    daily_gains = '+' + str(round(daily_gains, 2)) if daily_gains >=0 else str(round(daily_gains, 2))
-    values[1] = values[1] + ' (' + daily_gains + ')'
+    gains_p = add_sign(round(100*gains/(-achats),2))
+    daily_gains_p = add_sign(round(100*daily_gains/previous_gains,2))
+
+    gains = '€ ' + str(round(gains,2)) + ' (' + gains_p + ' %)'
+    daily_gains = '€ ' + str(round(daily_gains,2)) + ' (' + daily_gains_p + ' %)'
+
+    values = [portfolio_without_cash, gains,daily_gains,converted_dividend, cash,achats,brokerage_fees,total_non_product_fees,cash_fund_compensation]
+    for i, value in enumerate(values):
+        if not isinstance(value, str):
+            values[i] ='€ ' + str(round(value, 2))
+    names = ['Portfolio', 'Total gains','Daily gains','Dividend', 'Cash', 'Buy','Brokerage fees' ,'Total non product fees', 'Monetary funds refund']
+    
     
     table_content = [{'name': name,'value': value} for name, value in zip(names, values)]
 
@@ -86,9 +97,47 @@ def summary(portfolio, day=date.today(), live_data=None):
                                columns=[{'name':'name', 'id':'name'}, {'name':'value', 'id':'value'}], 
                                style_cell={'textAlign': 'left', 'maxWidth': 20}, 
                                style_as_list_view=True,
-                               style_data_conditional=[{'if': {'row_index': [1,2,4,5]},'border-bottom': '3px'}],
+                               style_data_conditional=[{'if': {'row_index': [1,2,3,5,6]},'border-bottom': '3px'},
+                                                        {'if': {'filter_query': '{value} contains "-" && {value} contains "("','column_id': 'value'},
+                                                        'color': 'red'},
+                                                        {'if': {'filter_query': '{value} contains "+" && {value} contains "("','column_id': 'value'},
+                                                        'color': 'green'}],
                                 style_cell_conditional=[{'if': {'column_id': 'value'},'width': '20%'},],
                                 style_header={'display':'none'}
+                                )
+    return table, table.data, table.columns
+
+def positions_summary(live_stock_info):
+    def cell_color(column, condition, color):
+        return {'if': {'filter_query': f'{{{column}}} contains "{condition}"','column_id': column},'color': color}
+    
+    for stock in live_stock_info:
+        for key, value in stock.items():
+            if key not in ['Size', 'Position', 'Gains']:
+                stock[key] = round(value*stock['Size'],2)
+        variation_p = add_sign(round((100*stock['absDiff'] / stock['previousClosePrice']),2))  
+        variation = add_sign(stock['absDiff'])  
+        stock['Daily gains'] = variation + ' ('+ variation_p + ' %)' 
+
+    table = dash_table.DataTable(data=live_stock_info, 
+                               id = 'positions_summary_table',
+                               columns=[{'name':'Postion', 'id':'Position'},
+                                        {'name':'Last', 'id':'lastPrice'}, 
+                                        {'name':'Daily gains', 'id':'Daily gains'}, 
+                                        {'name':'Total gains', 'id':'Gains'}, 
+                                        {'name':'Low', 'id':'lowPrice'},
+                                        {'name':'High', 'id':'highPrice'}, 
+                                        {'name':'1 year low', 'id':'lowPriceP1Y'}, 
+                                        {'name':'1 year high', 'id':'highPriceP1Y'}, 
+                                        {'name':'Quantity', 'id':'Size'}, 
+                                    ], 
+                               style_cell={'textAlign': 'left'}, 
+                               style_as_list_view=True,
+                               style_data_conditional=[cell_color('Gains', '-', 'red'),
+                                                        cell_color('Gains', '+', 'green'),
+                                                        cell_color('Daily gains', '-', 'red'),
+                                                        cell_color('Daily gains', '+', 'green')],
+                               
                                 )
     return table, table.data, table.columns
 
