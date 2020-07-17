@@ -10,21 +10,31 @@ from datetime import date, datetime
 
 class webparser:
 
-    def __init__(self, debug):
+    def __init__(self,authentification_file, hashed, debug):
+        with open(authentification_file, 'r') as file:
+            if hashed:
+                authentification_info = [base64.b64decode(line).decode("utf-8") for line in file] 
+            else:
+                authentification_info = [line for line in file]
+                
+        if len(authentification_info) == 3:
+            self.username, self.password, self.key = authentification_info
+        else:
+            self.username, self.password = authentification_info
+            self.key = None
+
         self.debug = debug
-        self.account = '11034964'
         self.headers = {'Content-Type': 'application/json'}
         self.login()
 
     def login(self):
-        with open('pass.bin', 'r') as file:
-            username, password, key = [base64.b64decode(line).decode("utf-8") for line in file]
 
-        totp = TOTP(key)
-        token = totp.now()
+        if self.key:
+            totp = TOTP(self.key)
+            token = totp.now()
 
-        data = json.dumps({"username":username,"password":password,"oneTimePassword":token})
-        url = 'https://trader.degiro.nl/login/secure/login/totp'
+            data = json.dumps({"username":self.username,"password":self.password,"oneTimePassword":token})
+            url = 'https://trader.degiro.nl/login/secure/login/totp'
 
         self.session = requests.Session()
         response = self.session.post(url,headers=self.headers,data=data)
@@ -33,6 +43,7 @@ class webparser:
         url = f'https://trader.degiro.nl/pa/secure/client?sessionId={self.sessionID}'
         client_info = self.session.get(url)
         self.userToken = json.loads(client_info.text)['data']['id']
+        self.account = json.loads(client_info.text)['data']['intAccount']
 
     def get_session_ID(self):
         return self.sessionID
@@ -72,10 +83,10 @@ class webparser:
         url = f'https://trader.degiro.nl/trading/secure/v5/update/{self.account};jsessionid={self.sessionID}'
         portfolio_query = self.session.get(url,params={'portfolio':0})
         portfolio = json.loads(portfolio_query.text)['portfolio']['value']
-        portfolio, live_stock_info  = self._add_positions_details(portfolio)
+        portfolio = self._add_positions_details(portfolio)
 
         positions = self._clean_positions(portfolio)
-        return positions, live_stock_info
+        return positions
     
     def _add_positions_details(self,portfolio):
         products = {}
@@ -93,23 +104,19 @@ class webparser:
                 product_value['value'] = last_price * product_value['size']
                 products[product_data['name']] = product_value
                 products[product_data['name']].update(product_data)
-                stock_info['Position'] = product_data['name']
-                stock_info['Size'] = product_value['size']
-
-                gains = round((product_value['value'] + product_value['plBase']),2)
-                gains_p = round((100*gains / (-product_value['plBase'])),2)
-                gains = str(gains) if gains<=0 else '+' + str(gains)
-                gains_p = str(gains_p) if gains_p<=0 else '+' + str(gains_p)
-                stock_info['Gains'] =  gains + ' (' + gains_p +' %)'
+                for v in ['name', 'size', 'plBase', 'value']:
+                    stock_info[v] = product_value[v]
+                
                 live_stock_info.append(stock_info)
         self.products = products
-        return products, live_stock_info
+        return products
 
     def _clean_positions(self, positions):
         keys = ['name', 'value','isin', 'size', 'closePrice', 'currency','plBase','realizedProductPl']
         
         positions = pd.DataFrame([[value[k] for k in keys] for value in positions.values()], columns=keys)
         
+        positions['value'] = positions['value'].round(2)
         positions['Gains'] = (positions['value'] + positions['plBase']).round(2) 
         positions['Gains (%)'] = (positions['Gains'] / (-positions['plBase'])).round(2)
         positions['Gains without fees'] = (positions['Gains'] - positions['realizedProductPl']).round(2) 
@@ -117,7 +124,6 @@ class webparser:
         positions['name'] = positions['name'].str[:31].str.upper().str.replace(' +',' ')
         positions.loc[positions['name'].str.len()==31, 'name'] = positions['name'].str.ljust(34,'.')
         positions['Date'] = pd.to_datetime(date.today())
-        
         positions = positions.drop(columns=['plBase', 'realizedProductPl'])
         
         positions = positions.rename(columns={'name':'Produit', 'value':'Amount','isin':'Ticker/ISIN', 'size':'Quantité', 'closePrice':'Clôture', 'currency':'Devise'})

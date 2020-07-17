@@ -14,6 +14,7 @@ import plotly.express as px
 import dash_table
 import dash_html_components as html
 from tqdm import tqdm 
+import copy 
 
 from parser import *
 
@@ -35,7 +36,6 @@ def summary(portfolio, day=date.today(), live_data=None):
         
     def get_total(portfolio, cash):
         return portfolio[portfolio['Produit']== 'Total']['Amount'].values[0] + cash
-
 
     if portfolio['Date'].isin([pd.to_datetime(day, format='%Y-%m-%d')]).any():
         day = pd.to_datetime(day, format='%Y-%m-%d')
@@ -62,7 +62,6 @@ def summary(portfolio, day=date.today(), live_data=None):
     # last_date = portfolio.iloc[-1,]['Date']
     
     cash_fund_compensation = -FM
-    previous_last_portfolio = get_day_portfolio(portfolio, day - timedelta(days=1))
     if day == pd.to_datetime(date.today(), format='%Y-%m-%d') and live_data:
         total, portfolio_without_cash, cash_fund_compensation, cash, gains, total_non_product_fees = live_data
     else:
@@ -72,17 +71,24 @@ def summary(portfolio, day=date.today(), live_data=None):
         portfolio_without_cash = last_portfolio[~last_portfolio['Produit'].isin(['CASH & CASH FUND (EUR)', 'Total', 'CASH & CASH FUND (USD)'])]['Amount'].sum() + cash_fund_compensation
         gains = total - deposit
     
-    previous_total = get_total(previous_last_portfolio, get_cash(previous_last_portfolio))
-    previous_account = account[account['Date'] <= day - timedelta(days=1) ]
-    previous_deposit = previous_account[previous_account['Description']=='Versement de fonds']['Mouvements'].sum()
-    previous_gains = previous_total - previous_deposit
-    daily_gains = gains - previous_gains     
-    
     gains_p = add_sign(round(100*gains/(-achats),2))
-    daily_gains_p = add_sign(round(100*daily_gains/previous_gains,2))
+    
+    if day != pd.to_datetime(portfolio['Date'].iloc[0], format='%d-%m-%Y'):
+        previous_last_portfolio = get_day_portfolio(portfolio, day - timedelta(days=1))
+        previous_total = get_total(previous_last_portfolio, get_cash(previous_last_portfolio))
+        previous_account = account[account['Date'] <= day - timedelta(days=1) ]
+        previous_deposit = previous_account[previous_account['Description']=='Versement de fonds']['Mouvements'].sum()
+        previous_gains = previous_total - previous_deposit
+        daily_gains = gains - previous_gains     
+        daily_gains_p = add_sign(round(100*daily_gains/(portfolio_without_cash-daily_gains),2))
 
-    gains = '€ ' + str(round(gains,2)) + ' (' + gains_p + ' %)'
-    daily_gains = '€ ' + str(round(daily_gains,2)) + ' (' + daily_gains_p + ' %)'
+        gains = '€ ' + str(round(gains,2)) + ' (' + gains_p + ' %)'
+        daily_gains = '€ ' + str(round(daily_gains,2)) + ' (' + daily_gains_p + ' %)'
+
+    else:
+        daily_gains = '€ ' + str(round(gains,2)) + ' (' + gains_p + ' %)'
+        gains = '€ ' + str(round(gains,2)) + ' (' + gains_p + ' %)'
+    
 
     values = [portfolio_without_cash, gains,daily_gains,converted_dividend, cash,achats,brokerage_fees,total_non_product_fees,cash_fund_compensation]
     for i, value in enumerate(values):
@@ -96,9 +102,9 @@ def summary(portfolio, day=date.today(), live_data=None):
     table = dash_table.DataTable(data=table_content, 
                                id = 'summary_table',
                                columns=[{'name':'name', 'id':'name'}, {'name':'value', 'id':'value'}], 
-                               style_cell={'textAlign': 'left', 'maxWidth': 20}, 
+                               style_cell={'textAlign': 'left'}, 
                                style_as_list_view=True,
-                               style_data_conditional=[{'if': {'row_index': [1,2,3,5,6]},'border-bottom': '3px'},
+                               style_data_conditional=[
                                                         {'if': {'filter_query': '{value} contains "-" && {value} contains "("','column_id': 'value'},
                                                         'color': 'red'},
                                                         {'if': {'filter_query': '{value} contains "+" && {value} contains "("','column_id': 'value'},
@@ -108,43 +114,51 @@ def summary(portfolio, day=date.today(), live_data=None):
                                 )
     return table, table.data, table.columns
 
-def positions_summary(live_stock_info):
+def positions_summary(portfolio, day=date.today()):
     def cell_color(column, condition, color):
         return {'if': {'filter_query': f'{{{column}}} contains "{condition}"','column_id': column},'color': color}
-    if live_stock_info:
-        for stock in live_stock_info:
-            for key, value in stock.items():
-                if key not in ['Size', 'Position', 'Gains']:
-                    stock[key] = round(value*stock['Size'],2)
-            variation_p = add_sign(round((100*stock['absDiff'] / stock['previousClosePrice']),2))  
-            variation = add_sign(stock['absDiff'])  
-            stock['Daily gains'] = variation + ' ('+ variation_p + ' %)' 
-
-        table = dash_table.DataTable(data=live_stock_info, 
-                                id = 'positions_summary_table',
-                                columns=[{'name':'Postion', 'id':'Position'},
-                                            {'name':'Last', 'id':'lastPrice'}, 
-                                            {'name':'Daily gains', 'id':'Daily gains'}, 
-                                            {'name':'Total gains', 'id':'Gains'}, 
-                                            {'name':'Low', 'id':'lowPrice'},
-                                            {'name':'High', 'id':'highPrice'}, 
-                                            {'name':'1 year low', 'id':'lowPriceP1Y'}, 
-                                            {'name':'1 year high', 'id':'highPriceP1Y'}, 
-                                            {'name':'Quantity', 'id':'Size'}, 
-                                        ], 
-                                style_cell={'textAlign': 'left'}, 
-                                style_as_list_view=True,
-                                style_data_conditional=[cell_color('Gains', '-', 'red'),
-                                                            cell_color('Gains', '+', 'green'),
-                                                            cell_color('Daily gains', '-', 'red'),
-                                                            cell_color('Daily gains', '+', 'green')],
-                                
-                                    )
-        return table
+    
+    if portfolio['Date'].isin([pd.to_datetime(day, format='%Y-%m-%d')]).any():
+        day = pd.to_datetime(day, format='%Y-%m-%d')
     else:
-        return html.P('No live data.')
+        day = pd.to_datetime(portfolio['Date'].iloc[-1], format='%d-%m-%Y')
 
-def retrieve_portfolio_record(sessionID, start_date=CREATION_DATE, end_date=date.today()):
+    stock_info = []
+    day_portfolio = portfolio[portfolio['Date']==day].sort_values(by=['Produit'])
+    for _, p in day_portfolio.iterrows():
+        if p['Produit'] not in ['Total', 'CASH & CASH FUND (EUR)']:
+            stock = {}
+            stock['name'] = p['Produit']
+            stock['lastPrice'] = '€ ' + str(p['Amount'])
+            variation_p = add_sign(round(100 * p['Gains variation'] / (p['Amount'] - p['Gains variation']),2))
+            stock['Daily gains'] = '€ ' + add_sign(p['Gains variation']) + ' (' + variation_p + ' %)' 
+            stock['Gains'] = '€ ' + add_sign(p['Gains']) + ' (' +  add_sign(round(100*p['Gains (%)'],2)) + ' %)'
+            stock['size'] = p['Quantité']
+            stock_info.append(stock)    
+
+    table = dash_table.DataTable(data=stock_info, 
+                            id = 'positions_summary_table',
+                            columns=[{'name':'Position', 'id':'name'},
+                                        {'name':'Price', 'id':'lastPrice'}, 
+                                        {'name':'Daily gains', 'id':'Daily gains'}, 
+                                        {'name':'Total gains', 'id':'Gains'}, 
+                                        # {'name':'Low', 'id':'lowPrice'},
+                                        # {'name':'High', 'id':'highPrice'}, 
+                                        # {'name':'1 year low', 'id':'lowPriceP1Y'}, 
+                                        # {'name':'1 year high', 'id':'highPriceP1Y'}, 
+                                        {'name':'Quantity', 'id':'size'}, 
+                                    ], 
+                            style_cell={'textAlign': 'left'}, 
+                            style_as_list_view=True,
+                            style_data_conditional=[cell_color('Gains', '-', 'red'),
+                                                        cell_color('Gains', '+', 'green'),
+                                                        cell_color('Daily gains', '-', 'red'),
+                                                        cell_color('Daily gains', '+', 'green')],
+                            
+                                )
+    return table, table.data, table.columns
+    
+def retrieve_portfolio_record(sessionID, start_date, end_date=date.today()):
     delta = end_date - start_date
     days = [start_date + timedelta(days=i) for i in range(delta.days + 1)]
     columns = ['Produit', 'Ticker/ISIN', 'Quantité', 'Clôture', 'Devise', 'Montant en EUR']
@@ -176,14 +190,14 @@ def retrieve_portfolio_record(sessionID, start_date=CREATION_DATE, end_date=date
     return portfolio
 
 
-def update_portfolio_record(sessionID, start_date='last', end_date=date.today()+timedelta(days=-1)):
+def update_portfolio_record(sessionID, creation_date, start_date='last', end_date=date.today()+timedelta(days=-1)):
     
     if os.path.isfile('portfolio_records.csv'):
         portfolio = pd.read_csv('portfolio_records.csv', index_col=0)
     else:
         columns = ['Produit', 'Ticker/ISIN', 'Quantité', 'Clôture', 'Devise', 'Montant en EUR','Date']
         portfolio = pd.DataFrame(columns=columns)
-        start_date=CREATION_DATE
+        start_date=creation_date
 
     if start_date == 'last':
         start_date = datetime.strptime(portfolio.iloc[-1,]['Date'], '%d-%m-%Y') 
@@ -206,7 +220,7 @@ def update_portfolio_record(sessionID, start_date='last', end_date=date.today()+
         print(f'start date: {start_date} bigger than end date: {end_date}')
 
 
-def retrieve_account_records(sessionID, start_date=CREATION_DATE, end_date=date.today()):
+def retrieve_account_records(sessionID, start_date, end_date=date.today()):
     link = f"""https://trader.degiro.nl/reporting/secure/v3/cashAccountReport/csv
             ?intAccount=11034964
             &sessionId={sessionID}
@@ -367,14 +381,13 @@ def portfolio_composition(portfolio, day=date.today()):
 
     fig = px.pie(portfolio.drop(portfolio[portfolio['Produit'].isin(['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)', 'Total'])].index, axis=0),
                 values='Amount', names='Produit', 
-                title=f'Portfolio composition {day.strftime("%d-%m-%Y")}',
                 hover_data=['Gains variation'],
                 labels={'Produit':'Product'})
     # fig.update_layout(showlegend=False)
     # fig.show()
     return fig
     
-def update(sessionID):
+def update(sessionID, creation_date):
     if sessionID:
-        retrieve_account_records(sessionID=sessionID)
-        update_portfolio_record(sessionID=sessionID)
+        retrieve_account_records(sessionID, creation_date)
+        update_portfolio_record(sessionID, creation_date)
