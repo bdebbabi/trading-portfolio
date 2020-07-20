@@ -138,10 +138,15 @@ class webparser:
     def get_account_summary(self):
         url = f'https://trader.degiro.nl/trading/secure/v5/update/{self.account};jsessionid={self.sessionID}'
         totalPortfolio = self.session.get(url, params={'totalPortfolio':0})
+        totalPortfolio = {p['name']: p['value'] if 'value' in p.keys() else None \
+                            for p in json.loads(totalPortfolio.text)['totalPortfolio']['value']}    
         
-        cash = json.loads(totalPortfolio.text)['totalPortfolio']['value'][0]['value']
-        cash_fund_compensation = json.loads(totalPortfolio.text)['totalPortfolio']['value'][2]['value']
-        total_non_product_fees = json.loads(totalPortfolio.text)['totalPortfolio']['value'][6]['value']
+        cash = totalPortfolio['totalCash']
+        cash_fund_compensation = totalPortfolio['cashFundCompensation']
+        cash_fund_compensation_withdrawn = totalPortfolio['cashFundCompensationWithdrawn']
+        cash_fund_compensation_pending = totalPortfolio['cashFundCompensationPending']
+        total_non_product_fees = totalPortfolio['totalNonProductFees']
+        
         buy = np.array([value['plBase'] for product, value in self.products.items()]).sum()
         portfolio_without_cash = np.array([value['value'] for product, value in self.products.items()]).sum() + cash_fund_compensation
         gains = portfolio_without_cash + buy + total_non_product_fees - cash_fund_compensation
