@@ -48,6 +48,9 @@ class webparser:
     def get_session_ID(self):
         return self.sessionID
 
+    def get_account_ID(self):
+        return self.account
+
     def get_stock_info(self,stock_id):
         session = requests.Session()
         resolution = 'PT1S' 

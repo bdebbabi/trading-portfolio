@@ -18,7 +18,6 @@ import copy
 
 from parser import *
 
-CREATION_DATE = date(2020, 1, 9)
 def add_sign(item):
     return str(item) if item <=0 else '+' + str(item)
 
@@ -52,7 +51,8 @@ def summary(portfolio, day=date.today(), live_data=None):
     portfolio = portfolio[portfolio['Date'] <= day]
 
     #original_dividend =  account[account['Description']=='Dividende']['Mouvements'].sum()
-    converted_dividend =  account[(account['Description']=='Opération de change - Débit') & (account['Mouvements']>0)]['Mouvements'].sum()
+    dividend =  account[(account['Description']=='Opération de change - Débit') & (account['Mouvements']>0)]['Mouvements'].sum()
+    dividend = dividend + account[(account['Description']=='Dividende') & (account['Mouvements']!=account['Solde'])]['Mouvements'].sum()
     FM =  account[account['Description']=='Variation Fonds Monétaires (EUR)']['Mouvements'].sum()
     achats = account[account['Description'].str[0:5]=='Achat']['Mouvements'].sum()
     total_non_product_fees = account[account['Description'].str[0:40]=='Frais de connexion aux places boursières']['Mouvements'].sum()
@@ -90,7 +90,7 @@ def summary(portfolio, day=date.today(), live_data=None):
         gains = '€ ' + str(round(gains,2)) + ' (' + gains_p + ' %)'
     
 
-    values = [portfolio_without_cash, gains,daily_gains,converted_dividend, cash,achats,brokerage_fees,total_non_product_fees,cash_fund_compensation]
+    values = [portfolio_without_cash, gains,daily_gains,dividend, cash,achats,brokerage_fees,total_non_product_fees,cash_fund_compensation]
     for i, value in enumerate(values):
         if not isinstance(value, str):
             values[i] ='€ ' + str(round(value, 2))
@@ -158,15 +158,71 @@ def positions_summary(portfolio, day=date.today()):
                                 )
     return table, table.data, table.columns
     
-def retrieve_portfolio_record(sessionID, start_date, end_date=date.today()):
+def dividends(day=date.today()):
+
+    account = pd.read_csv('account.csv', index_col=0)
+    day = pd.to_datetime(day, format='%Y-%m-%d')
+
+    account['Date'] = pd.to_datetime(account['Date'], format='%d-%m-%Y')
+    account['Date de'] = pd.to_datetime(account['Date de'], format='%d-%m-%Y')
+    account = account[account['Date'] <= day ]
+
+    account['Produit'] = account['Produit'].str[:31].str.upper().str.replace(' +',' ')
+    account.loc[account['Produit'].str.len()==31, 'Produit'] = account['Produit'].str.ljust(34,'.')
+
+    change = account[(account['Description']=='Opération de change - Débit') & (account['Mouvements']>0)]
+
+    dividends = account[(account['Description']=='Dividende') & 
+            (account['Mouvements']==account['Solde']) & 
+            (account['Date'] <= change['Date de'].max())]
+
+    dividends = dividends.reset_index(drop=True)
+    
+    dividends['Mouvements US'] = dividends['Mouvements']
+    dividends['Mouvements'] = list(change['Mouvements'])
+
+    dividends = pd.concat((dividends,account[(account['Description']=='Dividende') & (account['Mouvements']!=account['Solde'])]))
+
+    grouped_dividends = dividends.groupby(by='Produit').sum()
+
+    numbers = dividends['Produit'].value_counts()
+    grouped_dividends['Number'] = numbers
+
+    grouped_dividends = grouped_dividends.sort_values(by='Produit')
+
+    last_dates = dividends.drop_duplicates(subset='Produit', keep='first').sort_values(by='Produit')['Date de']
+    grouped_dividends['Last date'] = list(last_dates)
+
+    grouped_dividends = grouped_dividends.drop(columns=['Solde'])
+
+    grouped_dividends['Mouvements'] = '€ ' + grouped_dividends['Mouvements'].astype(str)
+    grouped_dividends['Mouvements US'] = '$ ' + grouped_dividends['Mouvements US'].astype(str).replace('0.0', '-')
+
+    grouped_dividends = grouped_dividends.sort_values(by='Last date', ascending=False)
+    grouped_dividends['Last date'] = grouped_dividends['Last date'].astype(str)
+
+    table = dash_table.DataTable(data=grouped_dividends.reset_index().to_dict('records'), 
+                                id = 'dividends_table',
+                                columns=[{'name':'Position', 'id':'Produit'},
+                                        {'name':'Dividends €', 'id':'Mouvements'},
+                                        {'name':'Dividends $', 'id':'Mouvements US'}, 
+                                        {'name':'Quantity', 'id':'Number'}, 
+                                        {'name':'Last dividend', 'id':'Last date'}
+                                        ], 
+                                style_cell={'textAlign': 'left'}, 
+                                style_as_list_view=True
+                                    )
+    return table, table.data, table.columns
+
+def retrieve_portfolio_record(sessionID, accountID, start_date, end_date=date.today()):
     delta = end_date - start_date
     days = [start_date + timedelta(days=i) for i in range(delta.days + 1)]
     columns = ['Produit', 'Ticker/ISIN', 'Quantité', 'Clôture', 'Devise', 'Montant en EUR']
 
     portfolio = pd.DataFrame()
-    for day in tqdm(days):
+    for day in days:
         link = f"""https://trader.degiro.nl/reporting/secure/v3/positionReport/csv
-                ?intAccount=11034964
+                ?intAccount={accountID}
                 &sessionId={sessionID}
                 &country=FR
                 &lang=fr
@@ -190,7 +246,7 @@ def retrieve_portfolio_record(sessionID, start_date, end_date=date.today()):
     return portfolio
 
 
-def update_portfolio_record(sessionID, creation_date, start_date='last', end_date=date.today()+timedelta(days=-1)):
+def update_portfolio_record(sessionID, accountID, creation_date, start_date='last', end_date=date.today()+timedelta(days=-1)):
     
     if os.path.isfile('portfolio_records.csv'):
         portfolio = pd.read_csv('portfolio_records.csv', index_col=0)
@@ -204,7 +260,7 @@ def update_portfolio_record(sessionID, creation_date, start_date='last', end_dat
         start_date = date(start_date.year, start_date.month, start_date.day)
     
     if start_date <= end_date:
-        new_portfolio = retrieve_portfolio_record(sessionID, start_date, end_date)
+        new_portfolio = retrieve_portfolio_record(sessionID, accountID, start_date, end_date)
     
         delta = end_date - start_date
         days = [(start_date + timedelta(days=i)).strftime('%d-%m-%Y') for i in range(delta.days + 1)]
@@ -214,15 +270,18 @@ def update_portfolio_record(sessionID, creation_date, start_date='last', end_dat
         portfolio = portfolio.reset_index(drop=True)
         portfolio.to_csv('portfolio_records.csv')
 
-        print(f'retrieved from start date: {start_date} to end date: {end_date}')
+        if start_date == end_date:
+            print(f'retrieved {start_date} portfolio')
+        else:
+            print(f'retrieved from {start_date} to {end_date} portfolios')
 
     elif start_date > end_date:
         print(f'start date: {start_date} bigger than end date: {end_date}')
 
 
-def retrieve_account_records(sessionID, start_date, end_date=date.today()):
+def retrieve_account_records(sessionID, accountID, start_date, end_date=date.today()):
     link = f"""https://trader.degiro.nl/reporting/secure/v3/cashAccountReport/csv
-            ?intAccount=11034964
+            ?intAccount={accountID}
             &sessionId={sessionID}
             &country=FR
             &lang=fr
@@ -387,7 +446,7 @@ def portfolio_composition(portfolio, day=date.today()):
     # fig.show()
     return fig
     
-def update(sessionID, creation_date):
-    if sessionID:
-        retrieve_account_records(sessionID, creation_date)
-        update_portfolio_record(sessionID, creation_date)
+def update(sessionID, accountID, creation_date):
+    if sessionID and accountID:
+        retrieve_account_records(sessionID, accountID, creation_date)
+        update_portfolio_record(sessionID, accountID, creation_date)
