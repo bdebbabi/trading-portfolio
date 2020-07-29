@@ -124,7 +124,7 @@ class webparser:
         positions['Gains (%)'] = (positions['Gains'] / (-positions['plBase'])).round(2)
         positions['Gains without fees'] = (positions['Gains'] - positions['realizedProductPl']).round(2) 
         positions['Gains without fees (%)'] = (100*positions['Gains without fees'] / (-positions['plBase'])).round(2)
-        positions['name'] = positions['name'].str[:31].str.upper().str.replace(' +',' ')
+        positions['name'] = positions['name'].str.upper().str.replace(' +',' ').str[:31]
         positions.loc[positions['name'].str.len()==31, 'name'] = positions['name'].str.ljust(34,'.')
         positions['Date'] = pd.to_datetime(date.today())
         positions = positions.drop(columns=['plBase', 'realizedProductPl'])

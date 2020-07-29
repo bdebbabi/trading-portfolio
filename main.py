@@ -53,7 +53,7 @@ external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 summary_width = '80%' if mobile else '30%'
 portfolio_composition_width = '100%' if mobile else '70%'
-positions_width = '100%' if mobile else '60%'
+positions_width = '80%' if mobile else '60%'
 display = 'block' if mobile else 'flex'
 min_day = portfolio['Date'].iloc[0]
 max_day = portfolio['Date'].iloc[-1]
