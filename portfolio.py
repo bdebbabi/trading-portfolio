@@ -130,7 +130,10 @@ def positions_summary(portfolio, day=date.today()):
             stock = {}
             stock['name'] = p['Produit']
             stock['lastPrice'] = '€ ' + str(p['Amount'])
-            variation_p = add_sign(round(100 * p['Gains variation'] / (p['Amount'] - p['Gains variation']),2))
+            if p['Amount'] - p['Gains variation'] != 0:
+                variation_p = add_sign(round(100 * p['Gains variation'] / (p['Amount'] - p['Gains variation']),2))
+            else:
+                variation_p = '0.0'
             stock['Daily gains'] = '€ ' + add_sign(p['Gains variation']) + ' (' + variation_p + ' %)' 
             stock['Gains'] = '€ ' + add_sign(p['Gains']) + ' (' +  add_sign(round(100*p['Gains (%)'],2)) + ' %)'
             stock['size'] = p['Quantité']
