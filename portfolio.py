@@ -30,9 +30,14 @@ def get_day_portfolio(portfolio, day):
     return day_portfolio
 
 def summary(portfolio, day=date.today(), live_data=None):
-    def get_cash(portfolio):
-        return portfolio[portfolio['Produit']== 'CASH & CASH FUND (EUR)']['Amount'].values[0]
-        
+    def get_cash(account):
+        deposit = account[account['Description'] == 'Versement de fonds']['Mouvements'].sum()
+        purchases = account[account['Description'].str[0:5] == 'Achat']['Mouvements'].sum()
+        fees = account[account['Description'] == 'Frais de courtage']['Mouvements'].sum()
+
+        cash = deposit + purchases + fees
+        return cash 
+
     def get_total(portfolio, cash):
         return portfolio[portfolio['Produit']== 'Total']['Amount'].values[0] + cash
 
@@ -66,7 +71,7 @@ def summary(portfolio, day=date.today(), live_data=None):
         total, portfolio_without_cash, cash_fund_compensation, cash, gains, total_non_product_fees = live_data
     else:
         last_portfolio = get_day_portfolio(portfolio, day)
-        cash = get_cash(last_portfolio)
+        cash = get_cash(account)
         total = get_total(last_portfolio, cash)
         portfolio_without_cash = last_portfolio[~last_portfolio['Produit'].isin(['CASH & CASH FUND (EUR)', 'Total', 'CASH & CASH FUND (USD)'])]['Amount'].sum() + cash_fund_compensation
         gains = total - deposit
@@ -75,7 +80,7 @@ def summary(portfolio, day=date.today(), live_data=None):
     
     if day != pd.to_datetime(portfolio['Date'].iloc[0], format='%d-%m-%Y'):
         previous_last_portfolio = get_day_portfolio(portfolio, day - timedelta(days=1))
-        previous_total = get_total(previous_last_portfolio, get_cash(previous_last_portfolio))
+        previous_total = get_total(previous_last_portfolio, get_cash(account[account['Date'] <= day - timedelta(days=1)]))
         previous_account = account[account['Date'] <= day - timedelta(days=1) ]
         previous_deposit = previous_account[previous_account['Description']=='Versement de fonds']['Mouvements'].sum()
         previous_gains = previous_total - previous_deposit
@@ -276,7 +281,7 @@ def update_portfolio_record(sessionID, accountID, creation_date, start_date='las
         if start_date == end_date:
             print(f'retrieved {start_date} portfolio')
         else:
-            print(f'retrieved from {start_date} to {end_date} portfolios')
+            print(f'retrieved portfolios from {start_date} to {end_date}')
 
     elif start_date > end_date:
         print(f'start date: {start_date} bigger than end date: {end_date}')
