@@ -138,8 +138,8 @@ class webparser:
         positions = positions.drop(columns=['plBase', 'realizedProductPl'])
         
         positions = positions.rename(columns={'name':'Produit', 'value':'Amount','isin':'Ticker/ISIN', 'size':'Quantité', 'closePrice':'Clôture', 'currency':'Devise'})
+        sum = positions[positions['Amount']!=0].sum()
 
-        sum = positions.sum()
         total_row = {'Produit':'Total', 'Amount': round(sum['Amount'], 2), 'Gains without fees': round(sum['Gains without fees'], 2), 'Gains': round(sum['Gains'],2), 'Date': positions.iloc[0]['Date'], 'Gains (%)': round((sum['Gains']/(sum['Amount'] - sum['Gains'])), 2), 'Gains without fees (%)': round((sum['Gains without fees']/(sum['Amount'] - sum['Gains without fees']) * 100), 2) }
         positions = positions.append(total_row, ignore_index=True)
 

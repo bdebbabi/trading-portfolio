@@ -31,11 +31,11 @@ def get_day_portfolio(portfolio, day):
 
 def summary(portfolio, day=date.today(), live_data=None):
     def get_cash(account):
-        deposit = account[account['Description'] == 'Versement de fonds']['Mouvements'].sum()
+        deposit = account[account['Description'].isin(['Versement de fonds', 'Dépôt flatex'])]['Mouvements'].sum()
         purchases = account[account['Description'].str[0:5] == 'Achat']['Mouvements'].sum()
         fees = account[account['Description'] == 'Frais de courtage']['Mouvements'].sum()
-
-        cash = deposit + purchases + fees
+        sales = account[account['Description'].str[0:5] == 'Vente']['Mouvements'].sum()
+        cash = deposit + purchases + fees + sales
         return cash 
 
     def get_total(portfolio, cash):
@@ -47,7 +47,6 @@ def summary(portfolio, day=date.today(), live_data=None):
         day = pd.to_datetime(portfolio['Date'].iloc[-1], format='%d-%m-%Y')
 
     account = pd.read_csv('account.csv', index_col=0)
-    # portfolio = pd.read_csv('portfolio_records.csv', index_col=0)
 
     account['Date'] = pd.to_datetime(account['Date'], format='%d-%m-%Y')
     portfolio['Date'] = pd.to_datetime(portfolio['Date'], format='%d-%m-%Y')
@@ -55,16 +54,13 @@ def summary(portfolio, day=date.today(), live_data=None):
     account = account[account['Date'] <= day ]
     portfolio = portfolio[portfolio['Date'] <= day]
 
-    #original_dividend =  account[account['Description']=='Dividende']['Mouvements'].sum()
     dividend =  account[(account['Description']=='Opération de change - Débit') & (account['Mouvements']>0)]['Mouvements'].sum()
     dividend = dividend + account[(account['Description']=='Dividende') & (account['Mouvements']!=account['Solde'])]['Mouvements'].sum()
     FM =  account[account['Description']=='Variation Fonds Monétaires (EUR)']['Mouvements'].sum()
     achats = account[account['Description'].str[0:5]=='Achat']['Mouvements'].sum()
     total_non_product_fees = account[account['Description'].str[0:40]=='Frais de connexion aux places boursières']['Mouvements'].sum()
     brokerage_fees = account[account['Description']=='Frais de courtage']['Mouvements'].sum()
-    deposit = account[account['Description']=='Versement de fonds']['Mouvements'].sum()
     
-    # last_date = portfolio.iloc[-1,]['Date']
     
     cash_fund_compensation = -FM
     if day == pd.to_datetime(date.today(), format='%Y-%m-%d') and live_data:
@@ -74,32 +70,23 @@ def summary(portfolio, day=date.today(), live_data=None):
         cash = get_cash(account)
         total = get_total(last_portfolio, cash)
         portfolio_without_cash = last_portfolio[~last_portfolio['Produit'].isin(['CASH & CASH FUND (EUR)', 'Total', 'CASH & CASH FUND (USD)'])]['Amount'].sum() + cash_fund_compensation
-        gains = total - deposit
     
-    gains_p = add_sign(round(100*gains/(-achats),2))
-    
-    if day != pd.to_datetime(portfolio['Date'].iloc[0], format='%d-%m-%Y'):
-        previous_last_portfolio = get_day_portfolio(portfolio, day - timedelta(days=1))
-        previous_total = get_total(previous_last_portfolio, get_cash(account[account['Date'] <= day - timedelta(days=1)]))
-        previous_account = account[account['Date'] <= day - timedelta(days=1) ]
-        previous_deposit = previous_account[previous_account['Description']=='Versement de fonds']['Mouvements'].sum()
-        previous_gains = previous_total - previous_deposit
-        daily_gains = gains - previous_gains     
-        daily_gains_p = add_sign(round(100*daily_gains/(portfolio_without_cash-daily_gains),2))
+    total_portfolio = portfolio[portfolio['Produit']=='Total'].iloc[-1,:]
+    gains = total_portfolio['Gains']
+    daily_gains = total_portfolio['Gains variation']
 
-        gains = '€ ' + str(round(gains,2)) + ' (' + gains_p + ' %)'
-        daily_gains = '€ ' + str(round(daily_gains,2)) + ' (' + daily_gains_p + ' %)'
+    gains_p = add_sign(round(100*gains/(total_portfolio['Amount']),2))
+    daily_gains_p = add_sign(round(100*daily_gains/(gains),2))
 
-    else:
-        daily_gains = '€ ' + str(round(gains,2)) + ' (' + gains_p + ' %)'
-        gains = '€ ' + str(round(gains,2)) + ' (' + gains_p + ' %)'
-    
+    gains = '€ ' + str(round(gains,2)) + ' (' + gains_p + ' %)'
+    daily_gains = '€ ' + str(round(daily_gains,2)) + ' (' + daily_gains_p + ' %)'
+    sales = account[account['Description'].str[0:5] == 'Vente']['Mouvements'].sum()
 
-    values = [portfolio_without_cash, gains,daily_gains,dividend, cash,achats,brokerage_fees,total_non_product_fees,cash_fund_compensation]
+    values = [portfolio_without_cash, gains,daily_gains, sales, dividend, cash,achats,brokerage_fees,total_non_product_fees,cash_fund_compensation]
     for i, value in enumerate(values):
         if not isinstance(value, str):
             values[i] ='€ ' + str(round(value, 2))
-    names = ['Portfolio', 'Total gains','Daily gains','Dividend', 'Cash', 'Buy','Brokerage fees' ,'Total non product fees', 'Monetary funds refund']
+    names = ['Portfolio', 'Total gains','Daily gains', 'Sales', 'Dividend', 'Cash', 'Buy','Brokerage fees' ,'Total non product fees', 'Monetary funds refund']
     
     
     table_content = [{'name': name,'value': value} for name, value in zip(names, values)]
@@ -131,7 +118,7 @@ def positions_summary(portfolio, day=date.today()):
     stock_info = []
     day_portfolio = portfolio[portfolio['Date']==day].sort_values(by=['Produit'])
     for _, p in day_portfolio.iterrows():
-        if p['Produit'] not in ['Total', 'CASH & CASH FUND (EUR)']:
+        if p['Produit'] not in ['Total', 'CASH & CASH FUND (EUR)'] and p['Quantité'] != 0:
             stock = {}
             stock['name'] = p['Produit']
             stock['lastPrice'] = '€ ' + str(p['Amount'])
@@ -185,7 +172,6 @@ def dividends(day=date.today()):
             (account['Date'] <= change['Date de'].max())]
 
     dividends = dividends.reset_index(drop=True)
-    
     dividends['Mouvements US'] = dividends['Mouvements']
     dividends['Mouvements'] = list(change['Mouvements'])
 
@@ -202,6 +188,7 @@ def dividends(day=date.today()):
     grouped_dividends['Last date'] = list(last_dates)
 
     grouped_dividends = grouped_dividends.drop(columns=['Solde'])
+    grouped_dividends['Mouvements US'] = grouped_dividends['Mouvements US'].round(2)
 
     grouped_dividends['Mouvements'] = '€ ' + grouped_dividends['Mouvements'].astype(str)
     grouped_dividends['Mouvements US'] = '$ ' + grouped_dividends['Mouvements US'].astype(str).replace('0.0', '-')
@@ -394,6 +381,7 @@ def portfolio_variation(metric, portfolio):
         title = metric 
         tickformat = '€'
     portfolio = portfolio.reset_index(drop=True)
+    portfolio = portfolio[portfolio['Quantité']!=0]
 
     fig = px.line(portfolio.drop(portfolio[portfolio['Produit'].isin(['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)'])].index, axis=0),
                     x='Date', y=metric, color='Produit', color_discrete_map={'Total':'black'}, hover_data=hover_data,
@@ -438,6 +426,7 @@ def portfolio_variation(metric, portfolio):
 
 def portfolio_composition(portfolio, day=date.today()):
     # portfolio = portfolio[(portfolio['Date'] == day.strftime('%d-%m-%Y')) & (portfolio['Produit'] != 'CASH & CASH FUND (EUR)')]
+    portfolio = portfolio[portfolio['Quantité']!=0]
 
     if portfolio['Date'].isin([pd.to_datetime(day, format='%Y-%m-%d')]).any():
         day = pd.to_datetime(day, format='%Y-%m-%d')
