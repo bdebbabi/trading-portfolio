@@ -72,21 +72,26 @@ def summary(portfolio, day=date.today(), live_data=None):
         portfolio_without_cash = last_portfolio[~last_portfolio['Produit'].isin(['CASH & CASH FUND (EUR)', 'Total', 'CASH & CASH FUND (USD)'])]['Amount'].sum() + cash_fund_compensation
     
     total_portfolio = portfolio[portfolio['Produit']=='Total'].iloc[-1,:]
-    gains = total_portfolio['Gains']
+    portfolio_sales_gains = portfolio[(portfolio['Date'] == day) & (portfolio['Produit']!='Total') ]['Gains'].sum()
+    total_gains = total_portfolio['Gains']
+    portfolio_gains = total_gains - dividend
+    sales_gains = portfolio_sales_gains - total_gains
     daily_gains = total_portfolio['Gains variation']
 
-    gains_p = add_sign(round(100*gains/(total_portfolio['Amount']),2))
-    daily_gains_p = add_sign(round(100*daily_gains/(gains),2))
+    total_gains = total_portfolio['Gains'] + sales_gains
 
-    gains = '€ ' + str(round(gains,2)) + ' (' + gains_p + ' %)'
+    total_gains_p = add_sign(round(100*total_gains/(total_portfolio['Amount']),2))
+    daily_gains_p = add_sign(round(100*daily_gains/(portfolio_gains),2))
+
+    total_gains = '€ ' + str(round(total_gains,2)) + ' (' + total_gains_p + ' %)'
     daily_gains = '€ ' + str(round(daily_gains,2)) + ' (' + daily_gains_p + ' %)'
     sales = account[account['Description'].str[0:5] == 'Vente']['Mouvements'].sum()
 
-    values = [portfolio_without_cash, gains,daily_gains, sales, dividend, cash,achats,brokerage_fees,total_non_product_fees,cash_fund_compensation]
+    values = [portfolio_without_cash, total_gains,daily_gains, portfolio_gains, sales_gains, dividend, sales, cash,achats,brokerage_fees,total_non_product_fees,cash_fund_compensation]
     for i, value in enumerate(values):
         if not isinstance(value, str):
             values[i] ='€ ' + str(round(value, 2))
-    names = ['Portfolio', 'Total gains','Daily gains', 'Sales', 'Dividend', 'Cash', 'Buy','Brokerage fees' ,'Total non product fees', 'Monetary funds refund']
+    names = ['Portfolio', 'Total gains','Daily gains', 'Portfolio gains', 'Sales gains', 'Dividend', 'Sales', 'Cash', 'Buy','Brokerage fees' ,'Total non product fees', 'Monetary funds refund']
     
     
     table_content = [{'name': name,'value': value} for name, value in zip(names, values)]
@@ -135,8 +140,8 @@ def positions_summary(portfolio, day=date.today()):
                             id = 'positions_summary_table',
                             columns=[{'name':'Position', 'id':'name'},
                                         {'name':'Price', 'id':'lastPrice'}, 
-                                        {'name':'Daily gains', 'id':'Daily gains'}, 
-                                        {'name':'Total gains', 'id':'Gains'}, 
+                                        {'name':'Daily gains (+ dividends)', 'id':'Daily gains'}, 
+                                        {'name':'Total gains (+ dividends)', 'id':'Gains'}, 
                                         # {'name':'Low', 'id':'lowPrice'},
                                         # {'name':'High', 'id':'highPrice'}, 
                                         # {'name':'1 year low', 'id':'lowPriceP1Y'}, 
