@@ -1,4 +1,5 @@
 import argparse
+import yaml
 import dash
 from dash.dependencies import Input, Output
 import dash_html_components as html
@@ -11,27 +12,23 @@ from parser import webparser
 import ast
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--debug', type=int, help='Debug level', default=0)
-parser.add_argument('--live', type=ast.literal_eval, help='Live positions', default=True)
-parser.add_argument('--mobile', type=ast.literal_eval, help='Whether or not to use mobile version', default=False)
-parser.add_argument('--creationDate', type=str, help='Account creation date in the following format YYYY-MM-dd', default='2020-01-09')
-
-parser.add_argument('--authentificationFile', type=str, help='Path of the file containing authetification info', default='pass.bin')
-parser.add_argument('--hashed', type=ast.literal_eval, help='Whether or not the authentification file is storing hashed values', default=True)
+parser.add_argument('--settings', type=str, help='Path of the file containing settings', default='settings.yaml')
 
 FLAGS = parser.parse_args()
+settings_path = FLAGS.settings
 
-debug = FLAGS.debug
-live = FLAGS.live
-mobile = FLAGS.mobile
-creation_date = dt.strptime(FLAGS.creationDate, '%Y-%m-%d')
-authentification_file = FLAGS.authentificationFile
-hashed = FLAGS.hashed
+with open(settings_path) as file:
+    settings = yaml.load(file, Loader=yaml.FullLoader)
+
+debug = settings['DEBUG']
+live = settings['LIVE']
+mobile = settings['MOBILE']
+creation_date = dt.strptime(settings['CREATION_DATE'], '%Y-%m-%d')
 
 if live:
     print('>>updating portfolio')
     live_data = None
-    web_parser = webparser(authentification_file, hashed, debug)
+    web_parser = webparser(settings['AUTHENTIFICATION'])
     sessionID = web_parser.get_session_ID()
     accountID = web_parser.get_account_ID()
     update(sessionID, accountID, creation_date)
@@ -130,4 +127,4 @@ def update_dividends_table_columns(date):
 
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server(debug=debug)

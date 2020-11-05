@@ -195,7 +195,7 @@ def dividends(day=date.today()):
     grouped_dividends = grouped_dividends.drop(columns=['Solde'])
     grouped_dividends['Mouvements US'] = grouped_dividends['Mouvements US'].round(2)
 
-    grouped_dividends['Mouvements'] = '€ ' + grouped_dividends['Mouvements'].astype(str)
+    grouped_dividends['Mouvements'] = '€ ' + grouped_dividends['Mouvements'].round(2).astype(str)
     grouped_dividends['Mouvements US'] = '$ ' + grouped_dividends['Mouvements US'].astype(str).replace('0.0', '-')
 
     grouped_dividends = grouped_dividends.sort_values(by='Last date', ascending=False)

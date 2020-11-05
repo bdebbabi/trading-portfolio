@@ -10,20 +10,18 @@ from datetime import date, datetime
 
 class webparser:
 
-    def __init__(self,authentification_file, hashed, debug):
-        with open(authentification_file, 'r') as file:
-            if hashed:
-                authentification_info = [base64.b64decode(line).decode("utf-8") for line in file] 
+    def __init__(self,authentification):
+        def dec(param):
+            if self.hashed:
+                return base64.b64decode(param).decode("utf-8")
             else:
-                authentification_info = [line for line in file]
-                
-        if len(authentification_info) == 3:
-            self.username, self.password, self.key = authentification_info
-        else:
-            self.username, self.password = authentification_info
-            self.key = None
-
-        self.debug = debug
+                return param
+        
+        self.hashed = authentification['HASHED']
+        self.username = dec(authentification['USERNAME'])
+        self.password = dec(authentification['PASSWORD'])
+        self.key = dec(authentification['KEY'])
+        
         self.headers = {'Content-Type': 'application/json'}
         self.login()
 
@@ -35,6 +33,10 @@ class webparser:
 
             data = json.dumps({"username":self.username,"password":self.password,"oneTimePassword":token})
             url = 'https://trader.degiro.nl/login/secure/login/totp'
+
+        else:
+            data = json.dumps({"username":self.username,"password":self.password})
+            url = 'https://trader.degiro.nl/login/secure/login'
 
         self.session = requests.Session()
         response = self.session.post(url,headers=self.headers,data=data)
