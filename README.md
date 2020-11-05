@@ -13,9 +13,13 @@ First clone the project as follows:
 ```bash
 git clone git@gitlab.utc.fr:bdebbabi/trading-portfolio.git
 ```  
+You also have to install the required packages. You will have to run the following command:
+```bash
+pip install -r requirements.txt
+```
 
 Then you will need to add your authentification settings by modifying the ```settings.yaml``` file.
-Add you username, password. If you have a 2-step authentification enabled you have to add your key, otherwise leave it empty. 
+Add you username and password. If you have a 2-step authentification enabled in your Degiro account you have to add your authentification key, otherwise leave it empty. 
 For more protection you can also write your authentification settings encoded into base64. You can use this [website](https://www.base64encode.org/) in order to do that. You will have to change ```HASHED``` to ```True``` in that case.
 You also have to add the account creation date.
 ```YAML
