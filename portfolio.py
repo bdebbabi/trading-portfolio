@@ -57,7 +57,10 @@ def summary(portfolio, day=date.today(), live_data=None):
     dividend =  account[(account['Description']=='Opération de change - Débit') & (account['Mouvements']>0)]['Mouvements'].sum()
     dividend = dividend + account[(account['Description']=='Dividende') & (account['Mouvements']!=account['Solde'])]['Mouvements'].sum()
     FM =  account[account['Description']=='Variation Fonds Monétaires (EUR)']['Mouvements'].sum()
-    achats = account[account['Description'].str[0:5]=='Achat']['Mouvements'].sum()
+    achats = account[account['Description'].str.contains('Achat.* EUR \(', regex=True)
+                    |((account['Description'].str.contains('Opération de change - Débit'))
+                    & (account['Code ISIN'].str!=''))]['Mouvements'].sum()
+    
     total_non_product_fees = account[account['Description'].str[0:40]=='Frais de connexion aux places boursières']['Mouvements'].sum()
     brokerage_fees = account[account['Description']=='Frais de courtage']['Mouvements'].sum()
     
@@ -140,8 +143,8 @@ def positions_summary(portfolio, day=date.today()):
                             id = 'positions_summary_table',
                             columns=[{'name':'Position', 'id':'name'},
                                         {'name':'Price', 'id':'lastPrice'}, 
-                                        {'name':'Daily gains (+ dividends)', 'id':'Daily gains'}, 
-                                        {'name':'Total gains (+ dividends)', 'id':'Gains'}, 
+                                        {'name':'Daily gains + dividends', 'id':'Daily gains'}, 
+                                        {'name':'Total gains + dividends', 'id':'Gains'}, 
                                         # {'name':'Low', 'id':'lowPrice'},
                                         # {'name':'High', 'id':'highPrice'}, 
                                         # {'name':'1 year low', 'id':'lowPriceP1Y'}, 
@@ -316,12 +319,14 @@ def add_gains_and_total():
 
     for _, p in portfolio.iterrows():
             expenses.append(account[(account['Date'] <= pd.to_datetime(p['Date'], format='%d-%m-%Y')) 
-                    & (account['Code ISIN']==p['Ticker/ISIN'])]['Mouvements'].sum())
+                                  & (account['Code ISIN']==p['Ticker/ISIN'])]['Mouvements'].sum())
 
+            
             buys.append(account[(account['Date'] <= pd.to_datetime(p['Date'], format='%d-%m-%Y')) 
-                    & (account['Code ISIN']==p['Ticker/ISIN'])
-                    & (account['Description'].str[0:5]=='Achat')]['Mouvements'].sum())
-    
+                              & (account['Code ISIN']==p['Ticker/ISIN'])
+                              & ((account['Description'].str.contains('Achat.* EUR \(', regex=True) 
+                              | (account['Description'].str.contains('Opération de change - Débit'))))]['Mouvements'].sum())
+            
     portfolio['Gains'] = expenses + portfolio['Montant en EUR']
     portfolio['Gains without fees'] = buys + portfolio['Montant en EUR']
 

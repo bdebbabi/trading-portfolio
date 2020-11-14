@@ -125,11 +125,11 @@ class webparser:
         return products
 
     def _clean_positions(self, positions):
-        keys = ['name', 'value','isin', 'size', 'closePrice', 'currency','plBase','realizedProductPl']
+        keys = ['name', 'value','isin', 'size', 'closePrice', 'currency','plBase','realizedProductPl', 'averageFxRate']
         
         positions = pd.DataFrame([[value[k] for k in keys] for value in positions.values()], columns=keys)
-        
-        positions['value'] = positions['value'].round(2)
+        positions['value'] = positions['value'] * positions['averageFxRate']
+        positions['value'] = positions['value'].round(2) 
         positions['Gains'] = (positions['value'] + positions['plBase']).round(2) 
         positions['Gains (%)'] = (positions['Gains'] / (-positions['plBase'])).round(2)
         positions['Gains without fees'] = (positions['Gains'] - positions['realizedProductPl']).round(2) 
@@ -137,7 +137,7 @@ class webparser:
         positions['name'] = positions['name'].str.upper().str.replace(' +',' ').str[:31]
         positions.loc[positions['name'].str.len()==31, 'name'] = positions['name'].str.ljust(34,'.')
         positions['Date'] = pd.to_datetime(date.today())
-        positions = positions.drop(columns=['plBase', 'realizedProductPl'])
+        positions = positions.drop(columns=['plBase', 'realizedProductPl', 'averageFxRate'])
         
         positions = positions.rename(columns={'name':'Produit', 'value':'Amount','isin':'Ticker/ISIN', 'size':'Quantité', 'closePrice':'Clôture', 'currency':'Devise'})
         sum = positions[positions['Amount']!=0].sum()
@@ -161,7 +161,8 @@ class webparser:
         total_non_product_fees = totalPortfolio['totalNonProductFees']
         
         buy = np.array([value['plBase'] for product, value in self.products.items()]).sum()
-        portfolio_without_cash = np.array([value['value'] for product, value in self.products.items()]).sum() + cash_fund_compensation
+        portfolio_without_cash = np.array([value['value']*value['averageFxRate'] 
+                                            for product, value in self.products.items()]).sum() + cash_fund_compensation
         gains = portfolio_without_cash + buy + total_non_product_fees - cash_fund_compensation
         total = portfolio_without_cash + cash
         
