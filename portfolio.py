@@ -15,7 +15,7 @@ import dash_table
 import dash_html_components as html
 from tqdm import tqdm 
 import copy 
-
+import warnings
 from parser import *
 
 def add_sign(item):
@@ -29,17 +29,24 @@ def get_day_portfolio(portfolio, day):
     day_portfolio = portfolio[portfolio['Date']==day]
     return day_portfolio
 
-def summary(portfolio, day=date.today(), live_data=None):
-    def get_cash(account):
-        deposit = account[account['Description'].isin(['Versement de fonds', 'Dépôt flatex'])]['Mouvements'].sum()
-        purchases = account[account['Description'].str[0:5] == 'Achat']['Mouvements'].sum()
-        fees = account[account['Description'] == 'Frais de courtage']['Mouvements'].sum()
-        sales = account[account['Description'].str[0:5] == 'Vente']['Mouvements'].sum()
-        cash = deposit + purchases + fees + sales
-        return cash 
+def get_account_data(account):
+    deposit = account[account['Description'].isin(['Versement de fonds', 'Dépôt flatex'])]['Mouvements'].sum()
+    dividend =  account[(account['Description']=='Opération de change - Débit') & (account['Mouvements']>0)]['Mouvements'].sum()
+    dividend = dividend + account[(account['Description']=='Dividende') & (account['Mouvements']!=account['Solde'])]['Mouvements'].sum()
+    cash_fund_compensation =  -account[account['Description']=='Variation Fonds Monétaires (EUR)']['Mouvements'].sum()
+    warnings.filterwarnings("ignore", 'This pattern has match groups')
+    purchases = account[account['Description'].str.contains(r'^Achat ((?!USD).)*$', regex=True)
+                    |((account['Description'].str.contains('Opération de change - Débit'))
+                    & (account['Code ISIN']))]['Mouvements'].sum()
+    flatex_interest = account[account['Description']=='Flatex Interest']['Mouvements'].sum()
+    total_non_product_fees = account[account['Description'].str[0:40]=='Frais de connexion aux places boursières']['Mouvements'].sum()
+    brokerage_fees = account[account['Description']=='Frais de courtage']['Mouvements'].sum()
+    sales = account[account['Description'].str[0:5] == 'Vente']['Mouvements'].sum()
 
-    def get_total(portfolio, cash):
-        return portfolio[portfolio['Produit']== 'Total']['Amount'].values[0] + cash
+    return deposit, dividend, cash_fund_compensation, purchases, total_non_product_fees, brokerage_fees, sales, flatex_interest
+
+
+def summary(portfolio, day=date.today(), live_data=None):
 
     if portfolio['Date'].isin([pd.to_datetime(day, format='%Y-%m-%d')]).any():
         day = pd.to_datetime(day, format='%Y-%m-%d')
@@ -50,51 +57,42 @@ def summary(portfolio, day=date.today(), live_data=None):
 
     account['Date'] = pd.to_datetime(account['Date'], format='%d-%m-%Y')
     portfolio['Date'] = pd.to_datetime(portfolio['Date'], format='%d-%m-%Y')
-
+    portfolio = portfolio[portfolio['Produit']!='Cash']
     account = account[account['Date'] <= day ]
     portfolio = portfolio[portfolio['Date'] <= day]
-
-    dividend =  account[(account['Description']=='Opération de change - Débit') & (account['Mouvements']>0)]['Mouvements'].sum()
-    dividend = dividend + account[(account['Description']=='Dividende') & (account['Mouvements']!=account['Solde'])]['Mouvements'].sum()
-    FM =  account[account['Description']=='Variation Fonds Monétaires (EUR)']['Mouvements'].sum()
-    achats = account[account['Description'].str.contains('Achat.* EUR \(', regex=True)
-                    |((account['Description'].str.contains('Opération de change - Débit'))
-                    & (account['Code ISIN'].str!=''))]['Mouvements'].sum()
-    
-    total_non_product_fees = account[account['Description'].str[0:40]=='Frais de connexion aux places boursières']['Mouvements'].sum()
-    brokerage_fees = account[account['Description']=='Frais de courtage']['Mouvements'].sum()
-    
-    
-    cash_fund_compensation = -FM
+    deposit, dividend, cash_fund_compensation, purchases, total_non_product_fees, brokerage_fees, sales, flatex_interest = get_account_data(account)
     if day == pd.to_datetime(date.today(), format='%Y-%m-%d') and live_data:
         total, portfolio_without_cash, cash_fund_compensation, cash, gains, total_non_product_fees = live_data
     else:
         last_portfolio = get_day_portfolio(portfolio, day)
-        cash = get_cash(account)
-        total = get_total(last_portfolio, cash)
-        portfolio_without_cash = last_portfolio[~last_portfolio['Produit'].isin(['CASH & CASH FUND (EUR)', 'Total', 'CASH & CASH FUND (USD)'])]['Amount'].sum() + cash_fund_compensation
+        #Flatex interest
+        cash = purchases + dividend + brokerage_fees + sales + total_non_product_fees + deposit + cash_fund_compensation + flatex_interest
+        total = last_portfolio[last_portfolio['Produit']== 'Total']['Amount'].values[0] + cash
+        portfolio_without_cash = last_portfolio[~last_portfolio['Produit'].isin(['CASH & CASH FUND (EUR)', 'Total', 'CASH & CASH FUND (USD)'])]['Amount'].sum() 
     
     total_portfolio = portfolio[portfolio['Produit']=='Total'].iloc[-1,:]
-    portfolio_sales_gains = portfolio[(portfolio['Date'] == day) & (portfolio['Produit']!='Total') ]['Gains'].sum()
+    portfolio_gains = portfolio[(portfolio['Date'] == day) & (portfolio['Produit']!='Total') & (portfolio['Quantité']!=0)]['Gains'].sum()
+    
     total_gains = total_portfolio['Gains']
-    portfolio_gains = total_gains - dividend
-    sales_gains = portfolio_sales_gains - total_gains
+
+    #we remove total non product fees because they are added to the total gains 
+    # total gains is portfolio gains(already include brokerage fees and dividens) + sales gains + non product fees   
+    sales_gains = total_gains - portfolio_gains-total_non_product_fees
+
     daily_gains = total_portfolio['Gains variation']
 
-    total_gains = total_portfolio['Gains'] + sales_gains
 
     total_gains_p = add_sign(round(100*total_gains/(total_portfolio['Amount']),2))
     daily_gains_p = add_sign(round(100*daily_gains/(portfolio_gains),2))
 
     total_gains = '€ ' + str(round(total_gains,2)) + ' (' + total_gains_p + ' %)'
     daily_gains = '€ ' + str(round(daily_gains,2)) + ' (' + daily_gains_p + ' %)'
-    sales = account[account['Description'].str[0:5] == 'Vente']['Mouvements'].sum()
 
-    values = [portfolio_without_cash, total_gains,daily_gains, portfolio_gains, sales_gains, dividend, sales, cash,achats,brokerage_fees,total_non_product_fees,cash_fund_compensation]
+    values = [portfolio_without_cash, total_gains,daily_gains, portfolio_gains, sales_gains, dividend, sales, cash,purchases,brokerage_fees,total_non_product_fees,cash_fund_compensation, flatex_interest]
     for i, value in enumerate(values):
         if not isinstance(value, str):
             values[i] ='€ ' + str(round(value, 2))
-    names = ['Portfolio', 'Total gains','Daily gains', 'Portfolio gains', 'Sales gains', 'Dividend', 'Sales', 'Cash', 'Buy','Brokerage fees' ,'Total non product fees', 'Monetary funds refund']
+    names = ['Portfolio', 'Total gains','Daily gains', 'Portfolio gains', 'Sales gains', 'Dividend', 'Sales', 'Cash', 'Purchases','Brokerage fees' ,'Total non product fees', 'Monetary funds refund', 'Flatex interest']
     
     
     table_content = [{'name': name,'value': value} for name, value in zip(names, values)]
@@ -124,6 +122,8 @@ def positions_summary(portfolio, day=date.today()):
         day = pd.to_datetime(portfolio['Date'].iloc[-1], format='%d-%m-%Y')
 
     stock_info = []
+    portfolio = portfolio[portfolio['Produit']!='Cash']
+
     day_portfolio = portfolio[portfolio['Date']==day].sort_values(by=['Produit'])
     for _, p in day_portfolio.iterrows():
         if p['Produit'] not in ['Total', 'CASH & CASH FUND (EUR)'] and p['Quantité'] != 0:
@@ -217,6 +217,37 @@ def dividends(day=date.today()):
                                     )
     return table, table.data, table.columns
 
+def closed_positions(portfolio, day=date.today()):
+    def cell_color(column, condition, color):
+        return {'if': {'filter_query': f'{{{column}}} contains "{condition}"','column_id': column},'color': color}
+    
+    if portfolio['Date'].isin([pd.to_datetime(day, format='%Y-%m-%d')]).any():
+        day = pd.to_datetime(day, format='%Y-%m-%d')
+    else:
+        day = pd.to_datetime(portfolio['Date'].iloc[-1], format='%d-%m-%Y')
+
+    stock_info = []
+    day_portfolio = portfolio[portfolio['Date']==day].sort_values(by=['Produit'])
+    for _, p in day_portfolio.iterrows():
+        if p['Produit'] not in ['Total', 'CASH & CASH FUND (EUR)'] and p['Quantité'] == 0:
+            stock = {}
+            stock['name'] = p['Produit']
+            stock['Gains'] = '€ ' + add_sign(p['Gains']) 
+            stock_info.append(stock)    
+
+    table = dash_table.DataTable(data=stock_info, 
+                            id = 'closed_positions_table',
+                            columns=[{'name':'Position', 'id':'name'},
+                                        {'name':'Total gains', 'id':'Gains'}, 
+                                    ], 
+                            style_cell={'textAlign': 'left'}, 
+                            style_as_list_view=True,
+                            style_data_conditional=[cell_color('Gains', '-', 'red'),
+                                                        cell_color('Gains', '+', 'green')],
+                            
+                                )
+    return table, table.data, table.columns
+
 def retrieve_portfolio_record(sessionID, accountID, start_date, end_date=date.today()):
     delta = end_date - start_date
     days = [start_date + timedelta(days=i) for i in range(delta.days + 1)]
@@ -306,6 +337,11 @@ def retrieve_account_records(sessionID, accountID, start_date, end_date=date.tod
 
 
 def add_gains_and_total():
+    def get_total_gains_and_cash(account, portfolio):
+        deposit, dividend, cash_fund_compensation, purchases, total_non_product_fees, brokerage_fees, sales, flatex_interest = get_account_data(account)
+        portfolio_total = portfolio[~portfolio['Produit'].isin(['CASH & CASH FUND (EUR)', 'Total', 'CASH & CASH FUND (USD)'])]['Montant en EUR'].sum() 
+        cash = purchases + dividend + brokerage_fees + sales + total_non_product_fees + deposit + cash_fund_compensation + flatex_interest
+        return portfolio_total+cash -deposit, cash
     portfolio = pd.read_csv('portfolio_records.csv', index_col=0)
     portfolio['Date'] = pd.to_datetime(portfolio['Date'], format='%d-%m-%Y')
     cash = portfolio[portfolio['Produit'].isin(['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)'])]
@@ -334,14 +370,19 @@ def add_gains_and_total():
     gains = []
     gains_without_fees = []
     portfolio_amount = []
-
+    complete_gains = []
+    actual_cash = []
     for day in portfolio['Date'].unique():
-            gains.append(portfolio[portfolio['Date'] == day ]['Gains'].sum())
-            gains_without_fees.append(portfolio[portfolio['Date'] == day]['Gains without fees'].sum())
-            portfolio_amount.append(portfolio[portfolio['Date'] == day]['Montant en EUR'].sum())
-
+        day_gain, day_cash = get_total_gains_and_cash(account[account['Date'] <= day ], portfolio[portfolio['Date'] == day])
+        complete_gains.append(day_gain)
+        actual_cash.append(day_cash)
+        gains.append(portfolio[portfolio['Date'] == day ]['Gains'].sum())
+        gains_without_fees.append(portfolio[portfolio['Date'] == day]['Gains without fees'].sum())
+        portfolio_amount.append(portfolio[portfolio['Date'] == day]['Montant en EUR'].sum())
+    
     total_gains = pd.DataFrame([['Total',d,g,gf,a] for d,g,gf,a in zip(portfolio['Date'].dt.strftime('%Y-%m-%d').unique().tolist(), 
-                                                                    gains, 
+                                                                    # gains, 
+                                                                    complete_gains, 
                                                                     gains_without_fees,
                                                                     portfolio_amount)], 
                                 columns=['Produit','Date','Gains', 'Gains without fees', 'Montant en EUR'])
@@ -358,6 +399,12 @@ def add_gains_and_total():
     portfolio['Complete gains'] = portfolio['Gains'].astype(str) + ' € (' + portfolio['Gains (%)'].astype(str) + ' %)'
     portfolio['Complete gains without fees'] = portfolio['Gains without fees'].astype(str) + ' € (' + portfolio['Gains without fees (%)'].astype(str) + ' %)'
     
+    actual_cash = pd.DataFrame([['Cash',d,round(c,2)] for d,c in zip(portfolio['Date'].dt.strftime('%Y-%m-%d').unique().tolist(),
+                                                           actual_cash)], 
+                                                           columns=['Produit','Date', 'Montant en EUR'])
+    actual_cash['Date'] = pd.to_datetime(actual_cash['Date'], format='%Y-%m-%d')
+    portfolio = pd.concat((portfolio, actual_cash))
+
     portfolio = pd.concat((portfolio, cash))
 
     portfolio = portfolio.rename(columns={'Montant en EUR':'Amount'})
@@ -393,9 +440,22 @@ def portfolio_variation(metric, portfolio):
     portfolio = portfolio.reset_index(drop=True)
     portfolio = portfolio[portfolio['Quantité']!=0]
 
-    fig = px.line(portfolio.drop(portfolio[portfolio['Produit'].isin(['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)'])].index, axis=0),
+    elements = portfolio['Produit'].unique().tolist()[::-1]
+    if metric in ['Gains', 'Gains (%)']:
+        removals = ['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)', 'Cash']
+        elements = [e for e in elements if e not in removals]
+
+        fig = px.line(portfolio.drop(portfolio[portfolio['Produit'].isin(removals)].index, axis=0),
                     x='Date', y=metric, color='Produit', color_discrete_map={'Total':'black'}, hover_data=hover_data,
-                    labels={'Produit':'Product'}, title=title, height=700 )
+                    labels={'Produit':'Product'}, title=title, height=700, category_orders={'Produit':elements} )
+    else:
+        removals = ['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)','Total']
+        elements = [e for e in elements if e not in removals]
+        elements.remove('Cash')
+        elements.append('Cash')
+        fig = px.area(portfolio.drop(portfolio[portfolio['Produit'].isin(removals)].index, axis=0),
+                    x='Date', y=metric, color='Produit', color_discrete_map={'Total':'black'}, hover_data=hover_data,
+                    labels={'Produit':'Product'}, title=title, height=700, line_group='Produit',category_orders={'Produit':elements})
 
     fig.update_layout(
             yaxis_tickformat = tickformat,
@@ -437,6 +497,7 @@ def portfolio_variation(metric, portfolio):
 def portfolio_composition(portfolio, day=date.today()):
     # portfolio = portfolio[(portfolio['Date'] == day.strftime('%d-%m-%Y')) & (portfolio['Produit'] != 'CASH & CASH FUND (EUR)')]
     portfolio = portfolio[portfolio['Quantité']!=0]
+    portfolio = portfolio[portfolio['Produit']!='Cash']
 
     if portfolio['Date'].isin([pd.to_datetime(day, format='%Y-%m-%d')]).any():
         day = pd.to_datetime(day, format='%Y-%m-%d')

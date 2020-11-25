@@ -7,7 +7,7 @@ import dash_core_components as dcc
 from datetime import datetime as dt
 import re
 import pandas as pd
-from portfolio import update, add_gains_and_total, summary, portfolio_composition, portfolio_variation, add_gains_variation, positions_summary, dividends
+from portfolio import update, add_gains_and_total, summary, portfolio_composition, portfolio_variation, add_gains_variation, positions_summary, dividends, closed_positions
 from parser import webparser
 import ast
 parser = argparse.ArgumentParser()
@@ -74,6 +74,7 @@ app.layout = html.Div([
         style={'width': portfolio_composition_width, 'display':'inline-block', 'margin-left': '100px'})
     ],style={'display': display}),
     html.Div([html.H6(children='Positions'),positions_summary(portfolio)[0]], style={'margin-left': '100px', 'width':positions_width}),
+    html.Div([html.H6(children='Closed positions'),closed_positions(portfolio)[0]], style={'margin-left': '100px', 'width':positions_width}),
     html.Div([html.H6(children='Dividends'),dividends()[0]], style={'margin-left': '100px', 'width':positions_width}),
 
     dcc.Graph(id='Gains', figure=portfolio_variation('Gains', portfolio)),
@@ -124,7 +125,18 @@ def update_dividends_table_columns(date):
     if date is not None:
         date = dt.strptime(re.split('T| ', date)[0], '%Y-%m-%d')
         return dividends(date)[2]
+@app.callback(Output('closed_positions_table', 'data'),[Input('my-date-picker-single', 'date')])
+def update_closed_positions_table_data(date):
+    # if date[0:10] == str(dt.today().date()):
+    if date is not None:
+        date = dt.strptime(re.split('T| ', date)[0], '%Y-%m-%d')
+        return closed_positions(portfolio, date)[1]
 
+@app.callback(Output('closed_positions_table', 'columns'),[Input('my-date-picker-single', 'date')])
+def update_closed_positions_table_columns(date):
+    if date is not None:
+        date = dt.strptime(re.split('T| ', date)[0], '%Y-%m-%d')
+        return closed_positions(portfolio, date)[2]
 
 if __name__ == '__main__':
     app.run_server(debug=debug)

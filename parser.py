@@ -88,8 +88,8 @@ class webparser:
         url = f'https://trader.degiro.nl/trading/secure/v5/update/{self.account};jsessionid={self.sessionID}'
         portfolio_query = self.session.get(url,params={'portfolio':0})
         portfolio = json.loads(portfolio_query.text)['portfolio']['value']
-        portfolio = self._add_positions_details(portfolio)
 
+        portfolio = self._add_positions_details(portfolio)
         positions = self._clean_positions(portfolio)
         return positions
     
@@ -140,11 +140,19 @@ class webparser:
         positions = positions.drop(columns=['plBase', 'realizedProductPl', 'averageFxRate'])
         
         positions = positions.rename(columns={'name':'Produit', 'value':'Amount','isin':'Ticker/ISIN', 'size':'Quantité', 'closePrice':'Clôture', 'currency':'Devise'})
-        sum = positions[positions['Amount']!=0].sum()
-
-        total_row = {'Produit':'Total', 'Amount': round(sum['Amount'], 2), 'Gains without fees': round(sum['Gains without fees'], 2), 'Gains': round(sum['Gains'],2), 'Date': positions.iloc[0]['Date'], 'Gains (%)': round((sum['Gains']/(sum['Amount'] - sum['Gains'])), 2), 'Gains without fees (%)': round((sum['Gains without fees']/(sum['Amount'] - sum['Gains without fees']) * 100), 2) }
+        # sum = positions[positions['Amount']!=0].sum()
+        sum = positions.sum()
+        _, _, _, cash, _, total_non_product_fees = self.get_account_summary()
+        total_row = {'Produit':'Total',
+                     'Amount': round(sum['Amount'], 2), 
+                     'Gains without fees': round(sum['Gains without fees']+total_non_product_fees, 2), 
+                     'Gains': round(sum['Gains']+total_non_product_fees,2), 
+                     'Date': positions.iloc[0]['Date'], 
+                     'Gains (%)': round((sum['Gains']/(sum['Amount'] - sum['Gains'])), 2), 
+                     'Gains without fees (%)': round((sum['Gains without fees']/(sum['Amount'] - sum['Gains without fees']) * 100), 2) 
+                     }
         positions = positions.append(total_row, ignore_index=True)
-
+        positions = positions.append({'Produit':'Cash', 'Amount':cash, 'Date':positions.iloc[0]['Date']}, ignore_index=True)
         return positions
 
 
