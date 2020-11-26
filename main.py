@@ -23,7 +23,7 @@ with open(settings_path) as file:
 debug = settings['DEBUG']
 live = settings['LIVE']
 mobile = settings['MOBILE']
-creation_date = dt.strptime(settings['CREATION_DATE'], '%Y-%m-%d')
+creation_date = dt.strptime(settings['CREATION_DATE'], '%Y-%m-%d').date()
 
 if live:
     print('>>updating portfolio')
