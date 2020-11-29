@@ -34,6 +34,7 @@ CREATION_DATE: '2020-01-09'
 ## Usage
 This app is run on localhost. Use the following command to launch it:
 ```bash
+cd src
 python main.py
 ```
 You can modify other settings in the yaml file depending on how you want to run the app.

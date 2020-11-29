@@ -18,6 +18,10 @@ import copy
 import warnings
 from parser import *
 
+TEMPLATE = "plotly_dark"
+# TEMPLATE = "plotly"
+ACCOUNT_PATH = 'data/account.csv'
+PORTFOLIO_PATH = 'data/portfolio_records.csv'
 def add_sign(item):
     return str(item) if item <=0 else '+' + str(item)
 
@@ -53,7 +57,7 @@ def summary(portfolio, day=date.today(), live_data=None):
     else:
         day = pd.to_datetime(portfolio['Date'].iloc[-1], format='%d-%m-%Y')
 
-    account = pd.read_csv('account.csv', index_col=0)
+    account = pd.read_csv(ACCOUNT_PATH, index_col=0)
 
     account['Date'] = pd.to_datetime(account['Date'], format='%d-%m-%Y')
     portfolio['Date'] = pd.to_datetime(portfolio['Date'], format='%d-%m-%Y')
@@ -100,7 +104,7 @@ def summary(portfolio, day=date.today(), live_data=None):
     table = dash_table.DataTable(data=table_content, 
                                id = 'summary_table',
                                columns=[{'name':'name', 'id':'name'}, {'name':'value', 'id':'value'}], 
-                               style_cell={'textAlign': 'left'}, 
+                               style_cell={'textAlign': 'left', 'backgroundColor': 'rgb(17, 17, 17)', 'color': 'white'}, 
                                style_as_list_view=True,
                                style_data_conditional=[
                                                         {'if': {'filter_query': '{value} contains "-" && {value} contains "("','column_id': 'value'},
@@ -108,7 +112,7 @@ def summary(portfolio, day=date.today(), live_data=None):
                                                         {'if': {'filter_query': '{value} contains "+" && {value} contains "("','column_id': 'value'},
                                                         'color': 'green'}],
                                 style_cell_conditional=[{'if': {'column_id': 'value'},'width': '20%'},],
-                                style_header={'display':'none'}
+                                style_header={'display':'none'},
                                 )
     return table, table.data, table.columns
 
@@ -151,7 +155,7 @@ def positions_summary(portfolio, day=date.today()):
                                         # {'name':'1 year high', 'id':'highPriceP1Y'}, 
                                         {'name':'Quantity', 'id':'size'}, 
                                     ], 
-                            style_cell={'textAlign': 'left'}, 
+                            style_cell={'textAlign': 'left', 'backgroundColor': 'rgb(17, 17, 17)', 'color': 'white'}, 
                             style_as_list_view=True,
                             style_data_conditional=[cell_color('Gains', '-', 'red'),
                                                         cell_color('Gains', '+', 'green'),
@@ -163,7 +167,7 @@ def positions_summary(portfolio, day=date.today()):
     
 def dividends(day=date.today()):
 
-    account = pd.read_csv('account.csv', index_col=0)
+    account = pd.read_csv(ACCOUNT_PATH, index_col=0)
     day = pd.to_datetime(day, format='%Y-%m-%d')
 
     account['Date'] = pd.to_datetime(account['Date'], format='%d-%m-%Y')
@@ -212,7 +216,7 @@ def dividends(day=date.today()):
                                         {'name':'Quantity', 'id':'Number'}, 
                                         {'name':'Last dividend', 'id':'Last date'}
                                         ], 
-                                style_cell={'textAlign': 'left'}, 
+                                style_cell={'textAlign': 'left', 'backgroundColor': 'rgb(17, 17, 17)', 'color': 'white'}, 
                                 style_as_list_view=True
                                     )
     return table, table.data, table.columns
@@ -240,7 +244,7 @@ def closed_positions(portfolio, day=date.today()):
                             columns=[{'name':'Position', 'id':'name'},
                                         {'name':'Total gains', 'id':'Gains'}, 
                                     ], 
-                            style_cell={'textAlign': 'left'}, 
+                            style_cell={'textAlign': 'left', 'backgroundColor': 'rgb(17, 17, 17)', 'color': 'white'}, 
                             style_as_list_view=True,
                             style_data_conditional=[cell_color('Gains', '-', 'red'),
                                                         cell_color('Gains', '+', 'green')],
@@ -282,8 +286,8 @@ def retrieve_portfolio_record(sessionID, accountID, start_date, end_date=date.to
 
 def update_portfolio_record(sessionID, accountID, creation_date, start_date='last', end_date=date.today()+timedelta(days=-1)):
     
-    if os.path.isfile('portfolio_records.csv'):
-        portfolio = pd.read_csv('portfolio_records.csv', index_col=0)
+    if os.path.isfile(PORTFOLIO_PATH):
+        portfolio = pd.read_csv(PORTFOLIO_PATH, index_col=0)
     else:
         columns = ['Produit', 'Ticker/ISIN', 'Quantité', 'Clôture', 'Devise', 'Montant en EUR','Date']
         portfolio = pd.DataFrame(columns=columns)
@@ -302,7 +306,7 @@ def update_portfolio_record(sessionID, accountID, creation_date, start_date='las
         portfolio = portfolio.drop(portfolio[portfolio['Date'].isin(days)].index, axis=0)
         portfolio = portfolio.append(new_portfolio)   
         portfolio = portfolio.reset_index(drop=True)
-        portfolio.to_csv('portfolio_records.csv')
+        portfolio.to_csv(PORTFOLIO_PATH)
 
         if start_date == end_date:
             print(f'retrieved {start_date} portfolio')
@@ -333,7 +337,9 @@ def retrieve_account_records(sessionID, accountID, start_date, end_date=date.tod
     account['Mouvements'] = account['Mouvements'].str.replace(',','.').astype(float)
     account['Solde'] = account['Solde'].str.replace(',','.').astype(float)
 
-    account.to_csv('account.csv')
+    if not os.path.isdir('data'):
+        os.makedirs('data')
+    account.to_csv(ACCOUNT_PATH)
 
 
 def add_gains_and_total():
@@ -342,12 +348,12 @@ def add_gains_and_total():
         portfolio_total = portfolio[~portfolio['Produit'].isin(['CASH & CASH FUND (EUR)', 'Total', 'CASH & CASH FUND (USD)'])]['Montant en EUR'].sum() 
         cash = purchases + dividend + brokerage_fees + sales + total_non_product_fees + deposit + cash_fund_compensation + flatex_interest
         return portfolio_total+cash -deposit, cash
-    portfolio = pd.read_csv('portfolio_records.csv', index_col=0)
+    portfolio = pd.read_csv(PORTFOLIO_PATH, index_col=0)
     portfolio['Date'] = pd.to_datetime(portfolio['Date'], format='%d-%m-%Y')
     cash = portfolio[portfolio['Produit'].isin(['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)'])]
     portfolio = portfolio.drop(portfolio[portfolio['Produit'].isin(['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)'])].index, axis=0)
 
-    account = pd.read_csv('account.csv', index_col=0)
+    account = pd.read_csv(ACCOUNT_PATH, index_col=0)
     account['Date'] = pd.to_datetime(account['Date'], format='%d-%m-%Y')
 
     expenses=[]
@@ -446,16 +452,16 @@ def portfolio_variation(metric, portfolio):
         elements = [e for e in elements if e not in removals]
 
         fig = px.line(portfolio.drop(portfolio[portfolio['Produit'].isin(removals)].index, axis=0),
-                    x='Date', y=metric, color='Produit', color_discrete_map={'Total':'black'}, hover_data=hover_data,
-                    labels={'Produit':'Product'}, title=title, height=700, category_orders={'Produit':elements} )
+                    x='Date', y=metric, color='Produit', color_discrete_map={'Total':'white'}, hover_data=hover_data,
+                    labels={'Produit':'Product'}, title=title, height=700, category_orders={'Produit':elements}, template=TEMPLATE)
     else:
         removals = ['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)','Total']
         elements = [e for e in elements if e not in removals]
         elements.remove('Cash')
         elements.append('Cash')
         fig = px.area(portfolio.drop(portfolio[portfolio['Produit'].isin(removals)].index, axis=0),
-                    x='Date', y=metric, color='Produit', color_discrete_map={'Total':'black'}, hover_data=hover_data,
-                    labels={'Produit':'Product'}, title=title, height=700, line_group='Produit',category_orders={'Produit':elements})
+                    x='Date', y=metric, color='Produit', color_discrete_map={'Total':'white'}, hover_data=hover_data,
+                    labels={'Produit':'Product'}, title=title, height=700, line_group='Produit',category_orders={'Produit':elements}, template=TEMPLATE)
 
     fig.update_layout(
             yaxis_tickformat = tickformat,
@@ -509,7 +515,7 @@ def portfolio_composition(portfolio, day=date.today()):
     fig = px.pie(portfolio.drop(portfolio[portfolio['Produit'].isin(['CASH & CASH FUND (EUR)','CASH & CASH FUND (USD)', 'Total'])].index, axis=0),
                 values='Amount', names='Produit', 
                 hover_data=['Gains variation'],
-                labels={'Produit':'Product'})
+                labels={'Produit':'Product'}, template=TEMPLATE)
     # fig.update_layout(showlegend=False)
     # fig.show()
     return fig

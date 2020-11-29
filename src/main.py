@@ -12,7 +12,7 @@ from parser import webparser
 import ast
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--settings', type=str, help='Path of the file containing settings', default='settings.yaml')
+parser.add_argument('--settings', type=str, help='Path of the file containing settings', default='../settings.yaml')
 
 FLAGS = parser.parse_args()
 settings_path = FLAGS.settings

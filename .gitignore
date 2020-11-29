@@ -1,1 +1,5 @@
-pass.bin
+data
+__pycache__
+images_uncensored
+.vscode
+settings1.yaml
