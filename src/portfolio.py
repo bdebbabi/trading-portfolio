@@ -17,6 +17,7 @@ from tqdm import tqdm
 import copy 
 import warnings
 from parser import *
+from tqdm import tqdm 
 
 TEMPLATE = "plotly_dark"
 # TEMPLATE = "plotly"
@@ -260,7 +261,7 @@ def retrieve_portfolio_record(sessionID, accountID, start_date, end_date=date.to
     columns = ['Produit', 'Ticker/ISIN', 'Quantité', 'Clôture', 'Devise', 'Montant en EUR']
 
     portfolio = pd.DataFrame()
-    for day in days:
+    for day in tqdm(days):
         link = f"""https://trader.degiro.nl/reporting/secure/v3/positionReport/csv
                 ?intAccount={accountID}
                 &sessionId={sessionID}

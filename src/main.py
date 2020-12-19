@@ -26,7 +26,7 @@ mobile = settings['MOBILE']
 creation_date = dt.strptime(settings['CREATION_DATE'], '%Y-%m-%d').date()
 
 if live:
-    print('>>updating portfolio')
+    print('>> Updating portfolio')
     live_data = None
     web_parser = webparser(settings['AUTHENTIFICATION'])
     sessionID = web_parser.get_session_ID()
@@ -35,7 +35,7 @@ if live:
     positions = web_parser.get_positions()
     live_data = web_parser.get_account_summary()
     current_time = dt.now().strftime("%H:%M:%S")
-    print(f'>>Showing live positions at {current_time}')    
+    print(f'>> Showing live positions at {current_time}')    
 else:
     live_data = None
 
