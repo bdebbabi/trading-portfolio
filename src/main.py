@@ -7,7 +7,7 @@ import dash_core_components as dcc
 from datetime import datetime as dt
 import re
 import pandas as pd
-from portfolio import update, add_gains_and_total, summary, portfolio_composition, portfolio_variation, add_gains_variation, positions_summary, dividends, closed_positions
+from portfolio import update, add_gains_and_total, summary, portfolio_composition, portfolio_variation, add_gains_variation, positions_summary, dividends, closed_positions, add_live_positions
 from parser import webparser
 import ast
 parser = argparse.ArgumentParser()
@@ -41,7 +41,7 @@ else:
 
 portfolio = add_gains_and_total()
 if live:
-    portfolio = pd.concat((portfolio, positions),ignore_index=True)
+    portfolio = add_live_positions(portfolio, positions)
 
 portfolio = add_gains_variation(portfolio)
 

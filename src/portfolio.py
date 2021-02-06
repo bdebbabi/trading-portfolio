@@ -527,3 +527,14 @@ def update(sessionID, accountID, creation_date):
     if sessionID and accountID:
         retrieve_account_records(sessionID, accountID, creation_date)
         update_portfolio_record(sessionID, accountID, creation_date)
+
+def add_live_positions(portfolio, positions):
+    # fix live positions names
+    unique_positions = portfolio.drop_duplicates('Produit', keep='last')
+    for idx, position in positions.iterrows():
+        if position['Ticker/ISIN'] in unique_positions['Ticker/ISIN'].values:
+            positions.at[idx, 'Produit'] = unique_positions[unique_positions['Ticker/ISIN']==position['Ticker/ISIN']]['Produit'].values[0]  
+    
+    # add live positions
+    portfolio = pd.concat((portfolio, positions),ignore_index=True)
+    return portfolio
