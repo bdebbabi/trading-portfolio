@@ -103,8 +103,9 @@ class webparser:
             product_value = {p['name']: p['value'] if 'value' in p.keys() else None for p in product['value']}
             product_value = {key:value['EUR'] if isinstance(value, dict) else value for key, value in product_value.items()}
             if product_value['positionType'] == 'PRODUCT':
-                if 'vwdId' in product_data.keys():    
-                    stock_info = self.get_stock_info(product_data['vwdId'])
+                if 'vwdIdentifierType' in product_data.keys():
+                    stock_id = product_data['vwdId'] if product_data['vwdIdentifierType'] == 'issueid' else product_data['vwdIdSecondary']
+                    stock_info = self.get_stock_info(stock_id)
                     last_price = stock_info['lastPrice']
                 else:
                     product_data['closePrice'] = 0 if 'closePrice' not in product_data.keys() else product_data['closePrice']
