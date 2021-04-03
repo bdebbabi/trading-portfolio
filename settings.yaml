@@ -7,3 +7,17 @@ CREATION_DATE: '2020-01-09' #Account creation date
 DEBUG: False #Change to True to allow live debbuging 
 LIVE: True #Show live positions if True, otherwise show the ones last time it was run with live 
 MOBILE: False #True to have an adapted display for mobile
+
+AUTHENTIFICATION:
+  DEGIRO:
+    USERNAME: 
+    PASSWORD: 
+    KEY: 
+  COINBASE:
+    API_KEY: 
+    API_SECRET: 
+  HASHED: True #True if the above parameters are enconded in base64
+CREATION_DATE: '2020-01-09' #Account creation date in the following format 'YYYY-MM-DD'
+DEBUG: True #Change to True to allow live debbuging 
+LIVE: True #Show live positions if True, otherwise show the ones last time it was run with live 
+MOBILE: False #True to have an adapted display for mobile
