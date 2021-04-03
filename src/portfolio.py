@@ -1,6 +1,6 @@
 from components import Transaction, Asset, Record
 from utils import get_transactions
-
+from tqdm import tqdm
 from parser import webparser
 from datetime import datetime, timedelta
 import pandas as pd
@@ -57,7 +57,7 @@ class Portfolio:
             self.types.pop(np.NaN, None)
 
     def get_historic_data(self, incl_fees=True, incl_dividends=True):
-        for asset in self.assets.values():
+        for asset in tqdm(self.assets.values()):
             asset.get_historic_data(incl_fees, incl_dividends)
 
     def get_data(self, incl_fees=True, incl_dividends=True):
