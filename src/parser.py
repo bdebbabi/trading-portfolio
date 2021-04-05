@@ -62,7 +62,7 @@ class webparser:
     def get_new_stock_info(self,stock_id, via, start_date, resolution='P1D'):
         session = requests.Session()
         if via in ['Degiro', 'Boursorama']:
-            period =  (datetime.now().date() - start_date).days
+            period =  (datetime.now().date() - start_date).days + 1
             series = ['issueid%3A' + stock_id, 'price%3Aissueid%3A' + stock_id]
             url = f'''https://charting.vwdservices.com/hchart/v1/deGiro/data.js?
                     requestid=1&
@@ -77,7 +77,6 @@ class webparser:
                     tz=Europe%2FAmsterdam'''
             url = ''.join(url.split())
             stock_info = json.loads(session.get(url).text[46:-1])
-
             currency = stock_info['series'][0]['data']['currency']
             last_price = stock_info['series'][0]['data']['lastPrice']
             start_time = datetime.strptime(stock_info['series'][1]['times'][:10],'%Y-%m-%d').date()
@@ -100,13 +99,13 @@ class webparser:
         
         return prices, last_price, currency
 
-    def get_stock_ids_and_type(self, via):
-        ids, types = {}, {}
+    def get_stock_data(self, via):
+        ids, types, symbols = {}, {}, {}
         if via == 'Degiro':
             url = f'https://trader.degiro.nl/trading/secure/v5/update/{self.accountID};jsessionid={self.sessionID}'
             portfolio_query = self.session.get(url,params={'portfolio':0})
             portfolio = json.loads(portfolio_query.text)['portfolio']['value']
-
+            type_map = {'ETF':'Funds', 'STOCK':'Stock'}
             for product in portfolio:
                 url = f'https://trader.degiro.nl/product_search/secure/v5/products/info?intAccount={self.accountID}&sessionId={self.sessionID}'
                 res = self.session.post(url,headers=self.headers,data='["'+product["id"]+'"]')
@@ -115,8 +114,10 @@ class webparser:
                     stock_id = data['vwdId'] if data['vwdIdentifierType'] == 'issueid' else data['vwdIdSecondary']
                     isin = data.get('isin') 
                     ids[isin] = stock_id
-                    types[isin] = data['productType']
-        return ids, types
+                    types[isin] = type_map[data['productType']]
+                    symbols[isin] = data['symbol']
+
+        return ids, types, symbols
     
     def get_degiro_data(self, start_date):
         end_date = datetime.now().date()

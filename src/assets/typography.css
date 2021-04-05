@@ -15,6 +15,7 @@ body {
 
 .type-card {
     display: flex;
+    /* background-color: rgb(34,34,34); */
 }
 
 .type-name {
@@ -23,7 +24,7 @@ body {
 
 .type-data{
     position: absolute;
-    right: 5%;
+    right: 3%;
     text-align: right;
 }
 
@@ -31,16 +32,19 @@ body {
     max-width: none;
 }
 
-.card-gain, .card-value{
-    /* float: right; */
+.card-gain, .card-text{
+    font-family: "Lato";
+    display: inline-flex;
 }
-
+.gain_p{
+    margin-left: 20px;
+}
 .main-card {
     text-align: center;
 }
 
 text{
-    font-size: 16px !important;
+    font-size: 16px;
 }
 
 .boolean-detailed { 
@@ -50,7 +54,7 @@ text{
 
 .Select-control {
     background-color: rgb(34,34,34) !important;
-    font-size: 19px;
+    font-size: 18px !important;
 }
 .Select-value .Select-value-label{
     color: white !important;
@@ -69,4 +73,77 @@ text{
 
 .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner tr {
     border-bottom-style: hidden;
+    font-size: 18px;
+}
+
+.bg-dark {
+    background-color: #222222 !important;
+}
+
+.modebar{
+    display: none !important;
+}
+
+.custom-control-label::after,
+.custom-control-label::before {
+  display: none;
+}
+
+.custom-control {
+  padding-left: 0;
+}
+
+.custom-control-inline {
+  margin-right: 0;
+}
+
+.date-group-labels {
+  border-radius: 0px;
+  font: 18px Lato;
+  padding: 6px 7px;
+  background-color: #222222;
+  cursor: pointer;
+}
+
+.date-group-labels.date-group-labels-checked{
+  background-color: #343434;
+  box-shadow: inset 0px 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.custom-radio:first-child .date-group-labels {
+  border-radius: 6px 0 0 6px;
+}
+
+.custom-radio:last-child .date-group-labels {
+  border-radius: 0 6px 6px 0;
+}
+
+.custom-radio:not(:last-child) .date-group-labels {
+  border-right: none;
+}
+
+.date-group-labels:hover {
+  box-shadow: inset 0px 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.date-group-items{
+    justify-content: center;
+    display: flex;
+}
+
+.custom-switch .detailed-label {
+    border-radius: 6px;
+  }
+
+.detailed-label {
+    border-radius: 0px;
+    font: 20px Lato;
+    padding: 6px 7px;
+    background-color: #222222;
+    cursor: pointer;
+  }
+  
+.detailed-label.detailed-label-checked{
+background-color: #343434;
+box-shadow: inset 0px 1px 2px rgba(0, 0, 0, 0.2);
 }

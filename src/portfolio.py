@@ -16,7 +16,7 @@ class Portfolio:
         self.get_eur_usd()
 
     def get_eur_usd(self):
-        eur_usd = Asset('EUR/USD', 'Forex', 'EURUSD', 'Degiro', '190143785', self.webparser)
+        eur_usd = Asset('EUR/USD', 'Forex', 'EURUSD', 'Degiro', '190143785', 'EUR/USD', self.webparser)
         eur_to_usd, last_eur_to_usd , _ = eur_usd.get_historic_prices(self.creation_date)
 
         last_price = eur_to_usd[self.creation_date]
@@ -49,7 +49,8 @@ class Portfolio:
                                         line['id'], 
                                         line['via'], 
                                         line['webparser_id'], 
-                                        self.webparser, 
+                                        line['symbol'], 
+                                        self.webparser,
                                         self.eur_to_usd)
             self.assets[id].add_transaction(transaction)
             typ, asset = line['type'], line['asset']
@@ -101,34 +102,50 @@ class Portfolio:
         
         self.values = pd.DataFrame(values)
         self.values.to_csv('data/values.csv')
-    
-    def get_holdings(self):
-        holding = {}
-        holdings = []
-        items = ['name', 'short_name', 'type', 'quantity', 'fee', 'buy', 'dividend', 'last_gain']
-        total = {key: {**{'name':key}, **{item:0 for item in items[3:]+['gains_p', 'value']}} 
-                 for key in ['Total']+list(self.types.keys())}
-        for asset in self.assets.values():
-            if not asset.last_gain:
-                continue
-            holding = {k:v for k,v in vars(asset).items() if k in items}
-            holding['gains_p'] = 100 * holding['last_gain'] / - holding['buy'] if holding['buy'] != 0 else holding['last_gain']   
-            holding['value'] = asset.last_price * asset.quantity
-            for typ in ['Total', asset.type]:
-                for item in ['value']+items[3:]: 
-                    total[typ][item] += holding[item]
-                total[typ]['gains_p'] = 100 * total[typ]['last_gain'] / -total[typ]['buy'] if  total[typ]['buy'] != 0 else total[typ]['last_gain']
-            holdings.append(holding)
-        for holding in total.values():
-            holdings.append(holding)
-        for holding in holdings:
-            for key, value in holding.items():
-                if key in ['value', 'gains_p']+items[4:]:
-                    holding[key] = np.round(value, 2)
-            if holding.get('type') == 'crypto' or holding['name'] in ['crypto', 'Total']:
-                holding['quantity'] = np.round(holding['quantity'],3)
-            else:    
-                holding['quantity'] = int(holding['quantity']) 
-        self.holdings = pd.DataFrame(holdings)
-        self.holdings.to_csv('data/holdings.csv', index=False)
 
+    def get_holdings(self):
+        today = datetime.today().date()
+        self.holdings = {}
+        self.dates = {
+            'All': self.creation_date, 
+            '1Y': today-timedelta(365),
+            'YTD': datetime(today.year, 1,1).date(),
+            '1M': today-timedelta(30),
+            '1W': today-timedelta(7),
+            '1D': today-timedelta(1)
+            }
+        holdings = {key:[] for key in self.dates.keys()}
+        items = ['name', 'symbol', 'type', 'quantity', 'fee', 'buy', 'dividend', 'gain']
+        for key, date in self.dates.items():
+            total = {key: {**{'name':key, 'symbol':key}, **{item:0 for item in items[3:]+['gain_p', 'value']}} 
+                    for key in ['Total']+list(self.types.keys())}
+            holding = {}
+            for asset in self.assets.values():
+                if not asset.gain:
+                    continue
+                holding = {k:v for k,v in vars(asset).items() if k in items}
+                holding['value'] = asset.price * asset.quantity
+                if date >= asset.start_date:
+                    # holding['value'] -= asset.values[date]
+                    # holding['quantity'] -= asset.quantities[date]
+                    holding['fee'] -= asset.fees[date]
+                    holding['dividend'] -= asset.dividends[date]
+                    holding['gain'] -= asset.gains[date]
+                holding['gain_p'] = 100 * holding['gain'] / - holding['buy'] if holding['buy'] != 0 else holding['gain']   
+                for typ in ['Total', asset.type]:
+                    for item in ['value']+items[3:]: 
+                        total[typ][item] += holding[item]
+                    total[typ]['gain_p'] = 100 * total[typ]['gain'] / -total[typ]['buy'] if  total[typ]['buy'] != 0 else total[typ]['gain']
+                holdings[key].append(holding)
+            for holding in total.values():
+                holdings[key].append(holding)
+            for holding in holdings[key]:
+                for item, value in holding.items():
+                    if item in ['value', 'gain_p']+items[4:]:
+                        holding[item] = np.round(value, 2)
+                if holding.get('type') == 'Crypto' or holding['name'] in ['Crypto', 'Total']:
+                    holding['quantity'] = np.round(holding['quantity'],3)
+                else:    
+                    holding['quantity'] = int(holding['quantity']) 
+            self.holdings[key] = pd.DataFrame(holdings[key]).sort_values('value', ascending=False)
+            self.holdings[key].to_csv(f'data/holdings_{key}.csv', index=False)

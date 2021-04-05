@@ -15,12 +15,10 @@ class Transaction:
     def __repr__(self):
         return f'Transaction(datetime={self.datetime}, value={self.value:.2f}, quantity={self.quantity}, fee={self.fee:.2f})'
 
-            
-
 class Asset:
-    def __init__(self, name, typ, id, via, parser_id, web_parser, eur_to_usd=None):
+    def __init__(self, name, typ, id, via, parser_id, symbol, web_parser, eur_to_usd=None):
         self.name = name
-        self.short_name = self.clean_name(name)
+        self.symbol = symbol
         self.type = typ
         self.id = id
         self.quantity = 0
@@ -53,7 +51,8 @@ class Asset:
             
         if self.records != []:
             self.records[-1].end_datetime = transaction.datetime
-
+        else:
+            self.start_date = transaction.datetime.date()
         self.records.append(Record(transaction.datetime, 
                                    self.quantity, 
                                    self.buy, 
@@ -63,55 +62,48 @@ class Asset:
 
     def get_historic_data(self, incl_fees=True, incl_dividends=True):
         current_date = self.records[0].start_datetime.date()
-        gains, values, buys = {}, {}, {}
+        gains, values, buys, quantities, fees, dividends = {}, {}, {}, {}, {}, {}
         if self.parser_id is np.NaN:
             self.gains = self.value = {}
-            self.last_gain = None
+            self.gain = None
             return
         prices, last_price, _ = self.get_historic_prices(current_date)
+        last_price = prices[current_date]
         for record in self.records:
-            while record.start_datetime.date()<=current_date<record.end_datetime.date():
+            last = 1 if record.end_datetime.date() == datetime.today().date() else 0
+            while record.start_datetime.date()<=current_date<record.end_datetime.date()+timedelta(last):
                 if current_date in prices:
-                    gain = prices[current_date] * record.quantity + record.sell + record.buy
-                    buy = record.buy
-                    if incl_fees:
-                        gain += record.fee
-                        buy += record.fee
-                    if incl_dividends:
-                        gain += record.dividend
-                    gains[current_date] = gain 
-                    values[current_date] = prices[current_date] * record.quantity
-                    buys[current_date] = buy
+                    last_price = prices[current_date]
+                gain = last_price * record.quantity + record.sell + record.buy
+                buy = record.buy
+                if incl_fees:
+                    gain += record.fee
+                    buy += record.fee
+                if incl_dividends:
+                    gain += record.dividend
+
+                gains[current_date] = gain 
+                values[current_date] = last_price * record.quantity
+                buys[current_date] = buy
+                quantities[current_date] = record.quantity
+                fees[current_date] = record.fee
+                dividends[current_date] = record.dividend
                 current_date += timedelta(1)
+
         last_gain = last_price * self.quantity + self.sell + self.buy
         if incl_fees:
             last_gain += self.fee
         if incl_dividends:
             last_gain += self.dividend
 
-        temp_gains, temp_values, temp_buys = {}, {}, {}
-        first_date = list(gains.keys())[0] 
-        current_gain = gains[first_date]
-        current_value = values[first_date]
-        current_buy = buys[first_date]
-
-        for day in range((datetime.today().date() - first_date).days+1):
-            date = first_date + timedelta(day)
-            if date not in gains:
-                temp_gains[date] = current_gain
-                temp_values[date] = current_value
-                temp_buys[date] = current_buy
-            else:
-                temp_gains[date] = gains[date]
-                temp_values[date] = values[date]
-                temp_buys[date] = buys[date]
-                current_gain, current_buy, current_value = gains[date], buys[date], values[date]
-        
-        self.gains = temp_gains
-        self.values = temp_values
-        self.buys = temp_buys
-        self.last_gain = last_gain
-        self.last_price = last_price
+        self.gains = gains
+        self.values = values
+        self.buys = buys
+        self.quantities = quantities
+        self.fees = fees
+        self.dividends = dividends
+        self.gain = last_gain
+        self.price = last_price
 
     def get_asset_record(self, datetime):
         for record in self.records:
@@ -136,13 +128,6 @@ class Asset:
             last_price = last_price / last_eur_usd
 
         return prices, last_price, currency
-
-    def clean_name(self, name):
-        for start in ['ISHARES ', 'VANGUARD ', 'LYXOR ']:
-            name = name.replace(start, '')
-        if len(name)>7:
-            name = name[:7] + '...'
-        return name
 
     def __repr__(self):
         rep = textwrap.dedent(

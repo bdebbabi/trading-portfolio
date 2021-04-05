@@ -51,7 +51,7 @@ def get_degiro_transactions(creation_date, webparser):
 	transactions = pd.concat([transactions, dividends]).sort_values(
 		'date', ignore_index=True)
 
-	degiro_ids, degiro_types = webparser.get_stock_ids_and_type('Degiro')
+	degiro_ids, degiro_types, degiro_symbols = webparser.get_stock_data('Degiro')
 
 	transactions = transactions[['date', 'asset', 'id','quantity', 'value', 'fees', 'description']]
 	transactions['via'] = 'Degiro'
@@ -60,9 +60,9 @@ def get_degiro_transactions(creation_date, webparser):
 	transactions.description[transactions.description =='Dividende'] = 'dividend'
 	transactions['webparser_id'] = transactions.id.map(degiro_ids)
 	transactions['type'] = transactions.id.map(degiro_types)
+	transactions['symbol'] = transactions.id.map(degiro_symbols)
 	transactions.quantity.fillna(0, inplace=True)
 	transactions.fees.fillna(0, inplace=True)
-
 	return transactions
 
 
@@ -96,7 +96,8 @@ def get_coinbase_transactions(webparser):
 			transaction['description'] = line['type']
 			transaction['via'] = 'Coinbase'
 			transaction['webparser_id'] = transaction['id']+'-USD'
-			transaction['type'] = 'crypto'
+			transaction['type'] = 'Crypto'
+			transaction['symbol'] = line['amount']['currency']
 			res.append(transaction)
 	return pd.DataFrame(res)
 
