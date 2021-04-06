@@ -81,11 +81,10 @@ class webparser:
             last_price = stock_info['series'][0]['data']['lastPrice']
             start_time = datetime.strptime(stock_info['series'][1]['times'][:10],'%Y-%m-%d').date()
             prices = {}
-        
             for data in stock_info['series'][1]['data']:
                 day, price = data
                 prices[start_time + timedelta(day)] = price
-            
+            prices[datetime.today().date()] = last_price
 
         elif via == 'Coinbase':
             stock_info = HistoricalData(stock_id,

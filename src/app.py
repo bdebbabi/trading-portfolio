@@ -261,6 +261,7 @@ def display_time_series(typ, data_type, detailed, date):
         xaxis={'fixedrange':True},
         yaxis={'fixedrange':True}
     )
+    fig.update_traces(hovertemplate='%{x}: <b>%{y}</b>')
     
     return fig
 
