@@ -68,31 +68,33 @@ class Portfolio:
             data[asset.name] = asset_data
             return data
 
-        gains, gains_p, values = [], [], []
+        gains, gains_p, values, prices = [], [], [], []
         
         for day in range((datetime.today().date() - self.creation_date).days+1):
             date = self.creation_date + timedelta(day)
             initial = {'Total':0, **{typ:0 for typ in list(self.types.keys())}}
-            gain, gain_p, value, buy = initial.copy(), initial.copy(), initial.copy(), initial.copy()
+            gain, gain_p, value, buy, price = initial.copy(), initial.copy(), initial.copy(), initial.copy(), initial.copy()
             for asset in self.assets.values():
                 if date in asset.gains:
                     gain = update_data(gain, asset.gains[date])
                     value = update_data(value, asset.values[date])
                     buy = update_data(buy, asset.buys[date])
+                    price = update_data(price, asset.prices[date])
                     gain_p[asset.name] = -100 * gain[asset.name] / buy[asset.name] if buy[asset.name]!=0 else gain[asset.name]
                       
             for key in ['Total', *[key for key in list(self.types.keys())]]:
                 gain_p[key] = 100 * gain[key] / -buy[key] if buy[key] != 0 else gain[key]
             
-            data = [gain, gain_p, value]
+            data = [gain, gain_p, value, price]
             for i in range(len(data)):
                 data[i] = {key: np.round(value, 2) for key, value in data[i].items()}
                 data[i]['date'] = date
 
-            gain, gain_p, value = data 
+            gain, gain_p, value, price = data 
             gains.append(gain)                    
             gains_p.append(gain_p)                    
             values.append(value)                    
+            prices.append(price)                    
 
         self.gains = pd.DataFrame(gains)
         self.gains.to_csv('data/gains.csv')
@@ -102,6 +104,9 @@ class Portfolio:
         
         self.values = pd.DataFrame(values)
         self.values.to_csv('data/values.csv')
+
+        self.prices = pd.DataFrame(prices)
+        self.prices.to_csv('data/prices.csv')
 
     def get_holdings(self):
         today = datetime.today().date()
@@ -115,7 +120,7 @@ class Portfolio:
             '1D': today-timedelta(1)
             }
         holdings = {key:[] for key in self.dates.keys()}
-        items = ['name', 'symbol', 'type', 'quantity', 'fee', 'buy', 'dividend', 'gain']
+        items = ['name', 'symbol', 'type', 'quantity', 'fee', 'buy', 'dividend', 'gain', 'price']
         for key, date in self.dates.items():
             total = {key: {**{'name':key, 'symbol':key}, **{item:0 for item in items[3:]+['gain_p', 'value']}} 
                     for key in ['Total']+list(self.types.keys())}

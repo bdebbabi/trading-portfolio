@@ -42,6 +42,7 @@ portfolio.get_holdings()
 gains = portfolio.gains
 gains_p = portfolio.gains_p
 values = portfolio.values
+prices = portfolio.prices
 holdings = portfolio.holdings
 portfolio_types = portfolio.types
 dates = portfolio.dates
@@ -73,8 +74,8 @@ app.layout = dbc.Container([
                 id = 'data_type',
                 options=[
                     {'label': label, 'value': value} for label, value 
-                    in zip(['Gains €', 'Gains %', 'Value'], 
-                        ['gains', 'gains_p', 'values'])
+                    in zip(['Gains €', 'Gains %', 'Value', 'Price'], 
+                        ['gains', 'gains_p', 'values', 'prices'])
                 ],
                 value='gains',
                 clearable=False,
@@ -128,6 +129,7 @@ app.layout = dbc.Container([
                         columns=[
                             {'name': 'Asset', 'id': 'name'},
                             {'name':'Value', 'id': 'value'},
+                            {'name':'Price', 'id': 'price'},
                             {'name':'Quantity', 'id': 'quantity', 'type':'numeric', 'format':Format(precision=3)},
                             {'name':'Gains €', 'id': 'gain', **euro_format},
                             {'name':'Gains %', 'id': 'gain_p', 'type':'numeric', 'format':Format(symbol=Symbol.yes, symbol_suffix=' %')},
@@ -237,7 +239,7 @@ def display_cards(date):
 def display_time_series(typ, data_type, detailed, date):
     if detailed:
         typ = [asset for desc in typ for asset in list(portfolio_types[desc])]
-    data_types = {'gains':gains, 'gains_p':gains_p, 'values': values}
+    data_types = {'gains':gains, 'gains_p':gains_p, 'values': values, 'prices': prices}
     df = data_types[data_type]
     fig = px.line(df[pd.to_datetime(df['date'])>=pd.to_datetime(dates[date])],
                   labels={'date':'', 'value':'', 'variable':''},
@@ -291,7 +293,7 @@ def display_sunburst(data_type, detailed, date):
             new.append(item)
         return np.array(new)
 
-    data_types = {'gains':'gain', 'gains_p':'gain_p', 'values': 'value'}
+    data_types = {'gains':'gain', 'gains_p':'gain_p', 'values': 'value', 'prices':'price'}
     datatype = data_types[data_type]
     custom_data = ['name', datatype]
     path = ['type', 'symbol'] if detailed else ['type']
@@ -322,7 +324,7 @@ def display_sunburst(data_type, detailed, date):
         lambda trace: trace.update(customdata=update_data(trace['customdata'])),
     )
 
-    titles = {'gains':'gain €', 'gains_p':'gain %', 'values': 'Value'}
+    titles = {'gains':'gain €', 'gains_p':'gain %', 'values': 'Value', 'prices':'Price'}
     font = dict(size=20,color='#ffffff',family='Lato')
     if neg_fig['data'] and pos_fig['data']:
         fig = make_subplots(rows=1, cols=2, specs=[[{"type": "domain"}, {"type": "domain"}]], 
@@ -335,10 +337,10 @@ def display_sunburst(data_type, detailed, date):
     else:
         if neg_fig['data']:
             fig = neg_fig
-            side = 'Negative' if data_type != 'values' else ''
+            side = 'Negative' if data_type not in ['values', 'prices'] else ''
         else:
-            side = 'Positive' if data_type != 'values' else ''
             fig = pos_fig
+            side = 'Positive' if data_type not in ['values', 'prices'] else ''
         fig['layout']['title'] = {'text': f'{side} {titles[data_type]}',
                                  'font':font, 'xanchor': 'center', 'xref': 'paper', 'x': 0.5,}
     fig.update_layout(

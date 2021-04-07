@@ -62,7 +62,7 @@ class Asset:
 
     def get_historic_data(self, incl_fees=True, incl_dividends=True):
         current_date = self.records[0].start_datetime.date()
-        gains, values, buys, quantities, fees, dividends = {}, {}, {}, {}, {}, {}
+        gains, values, buys, quantities, fees, dividends, prices = {}, {}, {}, {}, {}, {}, {}
         if self.parser_id is np.NaN:
             self.gains = self.value = {}
             self.gain = None
@@ -88,6 +88,7 @@ class Asset:
                 quantities[current_date] = record.quantity
                 fees[current_date] = record.fee
                 dividends[current_date] = record.dividend
+                prices[current_date] = last_price
                 current_date += timedelta(1)
 
         last_gain = last_price * self.quantity + self.sell + self.buy
@@ -102,6 +103,7 @@ class Asset:
         self.quantities = quantities
         self.fees = fees
         self.dividends = dividends
+        self.prices = prices
         self.gain = last_gain
         self.price = last_price
 
