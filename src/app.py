@@ -241,9 +241,15 @@ def display_time_series(typ, data_type, detailed, date):
         typ = [asset for desc in typ for asset in list(portfolio_types[desc])]
     data_types = {'gains':gains, 'gains_p':gains_p, 'values': values, 'prices': prices}
     df = data_types[data_type]
-    fig = px.line(df[pd.to_datetime(df['date'])>=pd.to_datetime(dates[date])],
-                  labels={'date':'', 'value':'', 'variable':''},
-                  x='date', y=typ+['Total'], template=TEMPLATE)
+    typ = list(set(df.columns).intersection(set(typ)))
+    if data_type == 'values':
+        fig = px.area(df[pd.to_datetime(df['date'])>=pd.to_datetime(dates[date])],
+                    labels={'date':'', 'value':'', 'variable':''},
+                    x='date', y=typ+['Total'], template=TEMPLATE)
+    else:
+        fig = px.line(df[pd.to_datetime(df['date'])>=pd.to_datetime(dates[date])],
+                    labels={'date':'', 'value':'', 'variable':''},
+                    x='date', y=typ+['Total'], template=TEMPLATE)
     if detailed and typ!=[]:
         for trace in fig['data']: 
             if(trace['name'] == 'Total'): trace['visible'] = 'legendonly'

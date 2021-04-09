@@ -63,11 +63,11 @@ class Asset:
     def get_historic_data(self, incl_fees=True, incl_dividends=True):
         current_date = self.records[0].start_datetime.date()
         gains, values, buys, quantities, fees, dividends, prices = {}, {}, {}, {}, {}, {}, {}
-        if self.parser_id is np.NaN:
+        prices = self.get_historic_prices(current_date)
+        if prices == [] or current_date not in prices.keys():
             self.gains = self.value = {}
             self.gain = None
             return
-        prices, last_price, _ = self.get_historic_prices(current_date)
         last_price = prices[current_date]
         for record in self.records:
             last = 1 if record.end_datetime.date() == datetime.today().date() else 0
@@ -120,16 +120,14 @@ class Asset:
         for record in self.records:
             print(record) 
     
-    def get_historic_prices(self, start_date, resolution='P1D', local_currency=False):
-        prices, last_price, currency = self.web_parser.get_new_stock_info(self.parser_id, self.via, start_date, resolution)
+    def get_historic_prices(self, start_date, local_currency=False):
+        prices, currency = self.web_parser.get_asset_prices(self.parser_id, self.type, start_date)
         
         if currency == 'USD' and not local_currency and self.id != 'EURUSD':
-            eur_usd, last_eur_usd  = self.eur_to_usd
             for date, price in prices.items():
-                prices[date] = price / eur_usd[date]
-            last_price = last_price / last_eur_usd
+                prices[date] = price / self.eur_to_usd[date]
 
-        return prices, last_price, currency
+        return prices
 
     def __repr__(self):
         rep = textwrap.dedent(

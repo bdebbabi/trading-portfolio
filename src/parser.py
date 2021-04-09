@@ -1,4 +1,4 @@
-from pyotp import *
+from pyotp import TOTP
 import base64
 import json
 import requests
@@ -8,6 +8,7 @@ from coinbase.wallet.client import Client
 from urllib.request import urlopen, Request
 from io import StringIO
 import pandas as pd
+import yfinance as yf
 
 class webparser:
 
@@ -58,45 +59,37 @@ class webparser:
         self.userToken = json.loads(client_info.text)['data']['id']
         self.accountID = json.loads(client_info.text)['data']['intAccount']
 
-
-    def get_new_stock_info(self,stock_id, via, start_date, resolution='P1D'):
-        session = requests.Session()
-        if via in ['Degiro', 'Boursorama']:
-            period =  (datetime.now().date() - start_date).days + 1
-            series = ['issueid%3A' + stock_id, 'price%3Aissueid%3A' + stock_id]
-            url = f'''https://charting.vwdservices.com/hchart/v1/deGiro/data.js?
-                    requestid=1&
-                    resolution={resolution}&
-                    culture=fr-FR&
-                    period=P{period}D&
-                    series={series[0]}&
-                    series={series[1]}&
-                    format=json&
-                    callback=vwd.hchart.seriesRequestManager.sync_response&
-                    userToken={self.userToken}&
-                    tz=Europe%2FAmsterdam'''
-            url = ''.join(url.split())
-            stock_info = json.loads(session.get(url).text[46:-1])
-            currency = stock_info['series'][0]['data']['currency']
-            last_price = stock_info['series'][0]['data']['lastPrice']
-            start_time = datetime.strptime(stock_info['series'][1]['times'][:10],'%Y-%m-%d').date()
-            prices = {}
-            for data in stock_info['series'][1]['data']:
-                day, price = data
-                prices[start_time + timedelta(day)] = price
-            prices[datetime.today().date()] = last_price
-
-        elif via == 'Coinbase':
-            stock_info = HistoricalData(stock_id,
+    def get_asset_prices(self, asset_id, asset_type, start_date):
+        if asset_type == 'Crypto':
+            stock_info = HistoricalData(asset_id,
                                         86400,
                                         start_date.strftime('%Y-%m-%d-%H-%M'), 
                                         verbose=False).retrieve_data()
             prices = {time.to_pydatetime().date(): value 
                         for time, value in stock_info.to_dict()['close'].items()}
-            last_price = float(LiveCryptoData(stock_id, verbose=False).return_data()['price'][0])
             currency = 'USD'
         
-        return prices, last_price, currency
+        else:
+            today = datetime.today().date()
+            last_year = today - timedelta(days=365)
+            today = today.strftime('%Y-%m-%d')
+
+            ticker = yf.Ticker(asset_id)
+            day_history = ticker.history(start=start_date, end=today, interval='1d')
+            if day_history.empty:
+                return [], None
+            hour_history = ticker.history(start=max([start_date,last_year]).strftime('%Y-%m-%d'), end=today, interval='1h')
+
+            hour_history.index = hour_history.index.date
+            day_history.index = day_history.index.date
+            hour_history = hour_history[~hour_history.index.duplicated(keep='last')]
+            day_history = pd.concat([day_history, hour_history[~hour_history.index.isin(day_history.index)]]).sort_index()
+            day_history.loc[datetime.today().date()] = pd.Series({'Close':ticker.info['regularMarketPrice']})
+
+            prices = day_history.to_dict()['Close']
+            currency = ticker.info['currency']
+
+        return prices, currency
 
     def get_stock_data(self, via):
         ids, types, symbols = {}, {}, {}
@@ -119,6 +112,20 @@ class webparser:
         return ids, types, symbols
     
     def get_degiro_data(self, start_date):
+        types, symbols = {}, {}
+        url = f'https://trader.degiro.nl/trading/secure/v5/update/{self.accountID};jsessionid={self.sessionID}'
+        portfolio_query = self.session.get(url,params={'portfolio':0})
+        portfolio = json.loads(portfolio_query.text)['portfolio']['value']
+        type_map = {'ETF':'Funds', 'STOCK':'Stock'}
+        for product in portfolio:
+            url = f'https://trader.degiro.nl/product_search/secure/v5/products/info?intAccount={self.accountID}&sessionId={self.sessionID}'
+            res = self.session.post(url,headers=self.headers,data='["'+product["id"]+'"]')
+            data = json.loads(res.text)['data'][product["id"]]
+            if data.get('productType') in ['ETF', 'STOCK']:
+                isin = data.get('isin') 
+                types[isin] = type_map[data['productType']]
+                symbols[isin] = data['symbol']
+
         end_date = datetime.now().date()
         data = []
         for report_type in ['cashAccountReport', 'transactionReport']:
@@ -134,4 +141,4 @@ class webparser:
             record = StringIO(urlopen(Request(link)).read().decode('utf-8'))
             data.append(pd.read_csv(record))
 
-        return data
+        return data + [types, symbols]

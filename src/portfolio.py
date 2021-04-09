@@ -16,8 +16,8 @@ class Portfolio:
         self.get_eur_usd()
 
     def get_eur_usd(self):
-        eur_usd = Asset('EUR/USD', 'Forex', 'EURUSD', 'Degiro', '190143785', 'EUR/USD', self.webparser)
-        eur_to_usd, last_eur_to_usd , _ = eur_usd.get_historic_prices(self.creation_date)
+        eur_usd = Asset('EUR/USD', 'Forex', 'EURUSD', 'Degiro', 'EURUSD=X', 'EUR/USD', self.webparser)
+        eur_to_usd  = eur_usd.get_historic_prices(self.creation_date)
 
         last_price = eur_to_usd[self.creation_date]
         for day in range((datetime.today().date() - self.creation_date).days+1):
@@ -26,7 +26,7 @@ class Portfolio:
                 eur_to_usd[date] = last_price
             else:
                 last_price = eur_to_usd[date]
-        self.eur_to_usd = eur_to_usd, last_eur_to_usd
+        self.eur_to_usd = eur_to_usd
 
     def add_transactions(self):
         transactions = get_transactions(self.creation_date, self.webparser)
@@ -79,7 +79,7 @@ class Portfolio:
                     gain = update_data(gain, asset.gains[date])
                     value = update_data(value, asset.values[date])
                     buy = update_data(buy, asset.buys[date])
-                    price = update_data(price, asset.prices[date])
+                    price[asset.name] = asset.prices[date]
                     gain_p[asset.name] = -100 * gain[asset.name] / buy[asset.name] if buy[asset.name]!=0 else gain[asset.name]
                       
             for key in ['Total', *[key for key in list(self.types.keys())]]:
@@ -138,7 +138,7 @@ class Portfolio:
                     holding['gain'] -= asset.gains[date]
                 holding['gain_p'] = 100 * holding['gain'] / - holding['buy'] if holding['buy'] != 0 else holding['gain']   
                 for typ in ['Total', asset.type]:
-                    for item in ['value']+items[3:]: 
+                    for item in ['value']+items[3:-1]: 
                         total[typ][item] += holding[item]
                     total[typ]['gain_p'] = 100 * total[typ]['gain'] / -total[typ]['buy'] if  total[typ]['buy'] != 0 else total[typ]['gain']
                 holdings[key].append(holding)

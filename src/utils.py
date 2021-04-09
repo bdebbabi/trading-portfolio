@@ -14,12 +14,13 @@ def get_transactions(creation_date, webparser):
 
 
 def get_degiro_transactions(creation_date, webparser):
-	account, transactions = webparser.get_degiro_data(creation_date)
-
+	account, transactions, types, symbols = webparser.get_degiro_data(creation_date)
+	mod_symbols = {'IE0032077012': 'EQQQ'}
+	symbols.update(mod_symbols)
 	renaming = {'Date': 'date', 'Heure': 'hour','Produit': 'asset', 'Code ISIN': 'id'}
 	account_renaming = {'Description': 'description',
 						'Unnamed: 8': 'value', 'Unnamed: 10': 'balance', **renaming}
-	transaction_renaming = {'Quantité': 'quantity',
+	transaction_renaming = {'Quantité': 'quantity', 'Place boursiè': 'stock_exchange',
 							'Montant': 'value', 'Frais de courtage': 'fees', **renaming}
 	account.rename(columns=account_renaming, inplace=True)
 	transactions.rename(columns=transaction_renaming, inplace=True)
@@ -50,17 +51,27 @@ def get_degiro_transactions(creation_date, webparser):
 
 	transactions = pd.concat([transactions, dividends]).sort_values(
 		'date', ignore_index=True)
+	
+	stock_exchange = {
+		'NDQ':'',
+		'MIL':'.MI',
+		'XET':'.DE',
+		'FRA':'.F',
+		'EPA':'.PA',
+		'NSY':'',
+		'EAM':'.AS'
+		}
 
-	degiro_ids, degiro_types, degiro_symbols = webparser.get_stock_data('Degiro')
-
-	transactions = transactions[['date', 'asset', 'id','quantity', 'value', 'fees', 'description']]
+	transactions['symbol'] = transactions.id.map(symbols)
+	transactions['webparser_id'] = transactions['symbol'] + transactions['stock_exchange'].map(stock_exchange)
+	
+	transactions = transactions[['date', 'asset', 'id','quantity', 'value', 'fees', 'description', 'symbol', 'webparser_id']]
 	transactions['via'] = 'Degiro'
 	transactions.description[transactions.quantity < 0] = 'sell'
 	transactions.description[transactions.quantity > 0] = 'buy'
 	transactions.description[transactions.description =='Dividende'] = 'dividend'
-	transactions['webparser_id'] = transactions.id.map(degiro_ids)
-	transactions['type'] = transactions.id.map(degiro_types)
-	transactions['symbol'] = transactions.id.map(degiro_symbols)
+
+	transactions['type'] = transactions.id.map(types)
 	transactions.quantity.fillna(0, inplace=True)
 	transactions.fees.fillna(0, inplace=True)
 	return transactions
