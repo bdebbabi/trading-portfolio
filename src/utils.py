@@ -5,22 +5,23 @@ from datetime import datetime
 def get_transactions(creation_date, webparser):
 	degiro = get_degiro_transactions(creation_date, webparser)
 	coinbase = get_coinbase_transactions(webparser)
-	boursorama = get_boursorama_transactions()
+	boursorama = get_boursorama_transactions(webparser)
 
-	transactions = transactions = pd.concat([degiro, coinbase, boursorama])
-	transactions.sort_values('date').reset_index(drop=True)
-	transactions.to_csv('data/transactions.csv')
+	transactions = pd.concat([degiro, coinbase, boursorama])
+	transactions = transactions.sort_values('date').reset_index(drop=True)
+	transactions.to_csv('data/transactions.csv', index=False)
 	return transactions
 
 
 def get_degiro_transactions(creation_date, webparser):
-	account, transactions, types, symbols = webparser.get_degiro_data(creation_date)
-	mod_symbols = {'IE0032077012': 'EQQQ'}
-	symbols.update(mod_symbols)
+	account, transactions = webparser.get_degiro_data(creation_date)
+	account.to_csv('data/degiro_account.csv')
+	transactions.to_csv('data/degiro_transactions.csv')
+	
 	renaming = {'Date': 'date', 'Heure': 'hour','Produit': 'asset', 'Code ISIN': 'id'}
 	account_renaming = {'Description': 'description',
 						'Unnamed: 8': 'value', 'Unnamed: 10': 'balance', **renaming}
-	transaction_renaming = {'Quantité': 'quantity', 'Place boursiè': 'stock_exchange',
+	transaction_renaming = {'Quantité': 'quantity', 'Place boursiè': 'exchange',
 							'Montant': 'value', 'Frais de courtage': 'fees', **renaming}
 	account.rename(columns=account_renaming, inplace=True)
 	transactions.rename(columns=transaction_renaming, inplace=True)
@@ -49,28 +50,18 @@ def get_degiro_transactions(creation_date, webparser):
 	id_to_asset = dict(zip(transactions.id, transactions.asset))
 	dividends['asset'] = dividends.id.map(id_to_asset)
 
+	types, symbols = webparser.get_asset_data(set(transactions.groupby(['id', 'exchange', 'asset']).groups.keys()))
 	transactions = pd.concat([transactions, dividends]).sort_values(
 		'date', ignore_index=True)
 	
-	stock_exchange = {
-		'NDQ':'',
-		'MIL':'.MI',
-		'XET':'.DE',
-		'FRA':'.F',
-		'EPA':'.PA',
-		'NSY':'',
-		'EAM':'.AS'
-		}
-
-	transactions['symbol'] = transactions.id.map(symbols)
-	transactions['webparser_id'] = transactions['symbol'] + transactions['stock_exchange'].map(stock_exchange)
 	
-	transactions = transactions[['date', 'asset', 'id','quantity', 'value', 'fees', 'description', 'symbol', 'webparser_id']]
+	transactions = transactions[['date', 'asset', 'id','quantity', 'value', 'fees', 'description','exchange']]
 	transactions['via'] = 'Degiro'
 	transactions.description[transactions.quantity < 0] = 'sell'
 	transactions.description[transactions.quantity > 0] = 'buy'
 	transactions.description[transactions.description =='Dividende'] = 'dividend'
 
+	transactions['symbol'] = transactions.id.map(symbols)
 	transactions['type'] = transactions.id.map(types)
 	transactions.quantity.fillna(0, inplace=True)
 	transactions.fees.fillna(0, inplace=True)
@@ -106,15 +97,17 @@ def get_coinbase_transactions(webparser):
 			transaction['fees'] = - transaction_fee
 			transaction['description'] = line['type']
 			transaction['via'] = 'Coinbase'
-			transaction['webparser_id'] = transaction['id']+'-USD'
 			transaction['type'] = 'Crypto'
 			transaction['symbol'] = line['amount']['currency']
 			res.append(transaction)
 	return pd.DataFrame(res)
 
 
-def get_boursorama_transactions():
+def get_boursorama_transactions(webparser):
 	transactions = pd.read_csv('data/boursorama_transactions.csv', sep=',')
+	types, symbols = webparser.get_asset_data(set(transactions.groupby(['id', 'exchange', 'asset']).groups.keys()))
+	transactions['symbol'] = transactions.id.map(symbols)
+	transactions['type'] = transactions.id.map(types)
 	transactions['date'] = pd.to_datetime(transactions['date'], format='%d-%m-%Y %H:%M')
-	transactions['webparser_id'] = transactions['webparser_id'].astype(str)
+
 	return transactions

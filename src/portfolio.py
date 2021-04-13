@@ -13,10 +13,11 @@ class Portfolio:
         self.webparser = webparser(settings['AUTHENTIFICATION'])
         self.assets = {}
         self.types = {}
-        self.get_eur_usd()
 
     def get_eur_usd(self):
-        eur_usd = Asset('EUR/USD', 'Forex', 'EURUSD', 'Degiro', 'EURUSD=X', 'EUR/USD', self.webparser)
+        name = 'EUR/USD'
+        eur_usd = Asset(name, 'Forex', name, 'Degiro', name, self.webparser)
+        self.webparser.get_asset_data(set([tuple([name, 'EURO', name])]))
         eur_to_usd  = eur_usd.get_historic_prices(self.creation_date)
 
         last_price = eur_to_usd[self.creation_date]
@@ -30,6 +31,7 @@ class Portfolio:
 
     def add_transactions(self):
         transactions = get_transactions(self.creation_date, self.webparser)
+        self.get_eur_usd()
         self.transactions = transactions
         for line in transactions.iterrows():
             line = line[1]
@@ -48,7 +50,6 @@ class Portfolio:
                                         line['type'], 
                                         line['id'], 
                                         line['via'], 
-                                        line['webparser_id'], 
                                         line['symbol'], 
                                         self.webparser,
                                         self.eur_to_usd)
@@ -122,7 +123,7 @@ class Portfolio:
         holdings = {key:[] for key in self.dates.keys()}
         items = ['name', 'symbol', 'type', 'quantity', 'fee', 'buy', 'dividend', 'gain', 'price']
         for key, date in self.dates.items():
-            total = {key: {**{'name':key, 'symbol':key}, **{item:0 for item in items[3:]+['gain_p', 'value']}} 
+            total = {key: {**{'name':key, 'symbol':key}, **{item:0 for item in items[3:-1]+['gain_p', 'value']}} 
                     for key in ['Total']+list(self.types.keys())}
             holding = {}
             for asset in self.assets.values():

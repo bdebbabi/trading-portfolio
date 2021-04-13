@@ -16,7 +16,7 @@ class Transaction:
         return f'Transaction(datetime={self.datetime}, value={self.value:.2f}, quantity={self.quantity}, fee={self.fee:.2f})'
 
 class Asset:
-    def __init__(self, name, typ, id, via, parser_id, symbol, web_parser, eur_to_usd=None):
+    def __init__(self, name, typ, id, via, symbol, web_parser, eur_to_usd=None):
         self.name = name
         self.symbol = symbol
         self.type = typ
@@ -30,7 +30,6 @@ class Asset:
         self.dividend = 0
         self.last_dividend = None
         self.via = via
-        self.parser_id = parser_id
         self.web_parser = web_parser
         self.eur_to_usd = eur_to_usd
         self.gains = {}
@@ -121,9 +120,9 @@ class Asset:
             print(record) 
     
     def get_historic_prices(self, start_date, local_currency=False):
-        prices, currency = self.web_parser.get_asset_prices(self.parser_id, self.type, start_date)
-        
-        if currency == 'USD' and not local_currency and self.id != 'EURUSD':
+        prices, currency = self.web_parser.get_asset_prices(self.id, self.type, start_date)
+
+        if currency == 'USD' and not local_currency and self.id != 'EUR/USD':
             for date, price in prices.items():
                 prices[date] = price / self.eur_to_usd[date]
 

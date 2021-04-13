@@ -2,11 +2,6 @@
     fill: rgb(34, 34, 34) !important
 }
 
-body { 
-    /* margin: 0; */
-    /* background-color: rgb(17, 17, 17); */
- }
-
 .holdings .row {
     display: block;
     margin: 0;
@@ -56,6 +51,11 @@ text{
     background-color: rgb(34,34,34) !important;
     font-size: 18px !important;
 }
+
+.Select-control .Select-input:focus{
+  background: rgb(34,34,34) !important;
+}
+
 .Select-value .Select-value-label{
     color: white !important;
 }
@@ -74,6 +74,10 @@ text{
 .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner tr {
     border-bottom-style: hidden;
     font-size: 18px;
+}
+
+.dash-tooltip{
+    color: #222222;
 }
 
 .bg-dark {

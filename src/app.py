@@ -46,6 +46,8 @@ prices = portfolio.prices
 holdings = portfolio.holdings
 portfolio_types = portfolio.types
 dates = portfolio.dates
+assets = [asset.name for asset in portfolio.assets.values()]
+
 
 TEMPLATE = "plotly_dark"
 BGCOLOR = 'rgba(34,34,34,255)'
@@ -135,7 +137,6 @@ app.layout = dbc.Container([
                             {'name':'Gains %', 'id': 'gain_p', 'type':'numeric', 'format':Format(symbol=Symbol.yes, symbol_suffix=' %')},
                             {'name':'Fees', 'id': 'fee', **euro_format},
                             {'name':'Dividends', 'id': 'dividend', **euro_format},
-                             
                             ],
                         style_cell={'textAlign': 'left', 'backgroundColor': BGCOLOR, 'color': 'white'},
                         style_as_list_view=True,
@@ -176,12 +177,21 @@ app.layout = dbc.Container([
     Input('date', 'value')
 )
 def display_cards(date):
+    def format_summary(summary):
+        prefix = lambda x: '+'+str(x) if x>=0 else str(x) 
+        for key, value in summary.items():
+            value['gain'] = '€ ' + prefix(value['gain'])
+            value['gain_p'] = prefix(value['gain_p']) + '%'
+            summary[key] = value
+        return summary
+
     holding = holdings[date]
     summary = holding[holding['type'].isnull()].set_index('name').to_dict('index')
     colors = []
     for data in summary.values():
         color = 'red' if data['gain'] < 0 else 'green'
         colors.append({'color': color})
+    summary = format_summary(summary)
 
     main_card = dbc.Card(
         [   
@@ -189,8 +199,8 @@ def display_cards(date):
                 html.Div(html.H1('HOLDINGS OVERVIEW')),
                 html.Div([
                     html.H1(f"€ {summary['Total']['value']}", className='card-value'),
-                    html.Div([html.H2(f"€ {summary['Total']['gain']}", style=colors[0]),
-                             html.H2(f"{summary['Total']['gain_p']}%", className='gain_p', style=colors[0])],
+                    html.Div([html.H2(f"{summary['Total']['gain']}", style=colors[0]),
+                             html.H2(f"{summary['Total']['gain_p']}", className='gain_p', style=colors[0])],
                              className='card-gain')
                 ],
                 className='main_data')    
@@ -212,8 +222,8 @@ def display_cards(date):
                         className='type-name'),
                     html.Div([
                         html.H2(f"€ {data['value']}", className='card-value'),
-                        html.Div([html.H3(f"€ {data['gain']}", style=colors[it]),
-                                 html.H3(f"{data['gain_p']}%", className='gain_p', style=colors[it])],
+                        html.Div([html.H3(f"{data['gain']}", style=colors[it]),
+                                 html.H3(f"{data['gain_p']}", className='gain_p', style=colors[it])],
                                  className='card-gain')
                         ],
                         className='type-data')
@@ -239,18 +249,19 @@ def display_cards(date):
 def display_time_series(typ, data_type, detailed, date):
     if detailed:
         typ = [asset for desc in typ for asset in list(portfolio_types[desc])]
+        typ = [asset for asset in assets if asset in typ]
     data_types = {'gains':gains, 'gains_p':gains_p, 'values': values, 'prices': prices}
     df = data_types[data_type]
-    typ = list(set(df.columns).intersection(set(typ)))
+    
     if data_type == 'values':
         fig = px.area(df[pd.to_datetime(df['date'])>=pd.to_datetime(dates[date])],
                     labels={'date':'', 'value':'', 'variable':''},
-                    x='date', y=typ+['Total'], template=TEMPLATE)
+                    x='date', y=['Total']+typ, template=TEMPLATE)
     else:
         fig = px.line(df[pd.to_datetime(df['date'])>=pd.to_datetime(dates[date])],
                     labels={'date':'', 'value':'', 'variable':''},
-                    x='date', y=typ+['Total'], template=TEMPLATE)
-    if detailed and typ!=[]:
+                    x='date', y=['Total']+typ, template=TEMPLATE)
+    if (data_type == 'values' or detailed) and typ!=[]:
         for trace in fig['data']: 
             if(trace['name'] == 'Total'): trace['visible'] = 'legendonly'
 
@@ -261,9 +272,11 @@ def display_time_series(typ, data_type, detailed, date):
             xanchor="left",
             x=0.01
         ),
+        font={'size':20},
+        hoverlabel={'font_size':20},
         autosize=True,
         # width=950,
-        height=600 + len(typ)*20,
+        height=600 + len(typ)*31,
         paper_bgcolor=BGCOLOR,
         plot_bgcolor=BGCOLOR,
         xaxis={'fixedrange':True},
@@ -274,7 +287,7 @@ def display_time_series(typ, data_type, detailed, date):
     return fig
 
 @app.callback(
-    Output('holdings', "data"),
+    [Output('holdings', "data"), Output("holdings", "tooltip_data")],
     [Input('typ', "value"), Input("detailed", "value"), Input('date', 'value')]
     )
 def update_table(typ, detailed, date):
@@ -284,8 +297,9 @@ def update_table(typ, detailed, date):
         df = pd.concat([df,holding[holding.type.isin(typ)]])
     ending = df['name'].str.len()>27
     ending = ending.replace(True,'...').replace(False,'')
-    df['name'] = df['name'].str[:27] + ending
-    return df.to_dict('records')
+    tooltip_data= [{'name':name} for name in df['name']]
+    df['name'] = df['name'].str[:20] + ending
+    return df.to_dict('records'), tooltip_data
 
 @app.callback(
     Output('sunburst', "figure"),
@@ -353,6 +367,8 @@ def display_sunburst(data_type, detailed, date):
         paper_bgcolor=BGCOLOR,
         plot_bgcolor=BGCOLOR,
         margin=dict(t=100, b=10, r=10, l=10),
+        font={'size':20},
+        hoverlabel={'font_size':20}
     )
 
     return fig

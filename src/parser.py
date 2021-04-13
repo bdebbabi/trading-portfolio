@@ -8,7 +8,10 @@ from coinbase.wallet.client import Client
 from urllib.request import urlopen, Request
 from io import StringIO
 import pandas as pd
-import yfinance as yf
+import investpy
+from pathlib import Path
+from investpy.utils.search_obj import SearchObj, random_user_agent
+from lxml import html
 
 class webparser:
 
@@ -61,7 +64,7 @@ class webparser:
 
     def get_asset_prices(self, asset_id, asset_type, start_date):
         if asset_type == 'Crypto':
-            stock_info = HistoricalData(asset_id,
+            stock_info = HistoricalData(asset_id+'-USD',
                                         86400,
                                         start_date.strftime('%Y-%m-%d-%H-%M'), 
                                         verbose=False).retrieve_data()
@@ -70,62 +73,110 @@ class webparser:
             currency = 'USD'
         
         else:
-            today = datetime.today().date()
-            last_year = today - timedelta(days=365)
-            today = today.strftime('%Y-%m-%d')
-
-            ticker = yf.Ticker(asset_id)
-            day_history = ticker.history(start=start_date, end=today, interval='1d')
-            if day_history.empty:
+            if asset_id not in self.assets_data:
                 return [], None
-            hour_history = ticker.history(start=max([start_date,last_year]).strftime('%Y-%m-%d'), end=today, interval='1h')
+            data = self.assets_data[asset_id]
+            data = SearchObj(**data)
+            if data.pair_type=='currencies':
+                currency = data.symbol.split('/')[1]
+            else:
+                url = f"https://www.investing.com{data.tag}"
+                headers = {
+                    "User-Agent": random_user_agent(),
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Accept": "text/html",
+                    "Accept-Encoding": "gzip, deflate",
+                    "Connection": "keep-alive",
+                }
 
-            hour_history.index = hour_history.index.date
-            day_history.index = day_history.index.date
-            hour_history = hour_history[~hour_history.index.duplicated(keep='last')]
-            day_history = pd.concat([day_history, hour_history[~hour_history.index.isin(day_history.index)]]).sort_index()
-            day_history.loc[datetime.today().date()] = pd.Series({'Close':ticker.info['regularMarketPrice']})
-
-            prices = day_history.to_dict()['Close']
-            currency = ticker.info['currency']
-
+                req = requests.get(url, headers=headers)
+                page = html.fromstring(req.content)
+                if data.pair_type=='stocks':
+                    # price = float(page.xpath("//span[@class='instrument-price_last__KQzyA']/text()")[0])
+                    currency = page.xpath("//span[@class='instrument-metadata_text__2iS5i font-bold']/text()")[0]
+                elif data.pair_type=='etfs':
+                    # price = float(page.xpath("//span[@id='last_last']/text()")[0])
+                    pos = req.text.find('Currency in')
+                    currency = req.text[pos+31 : pos+34]
+            
+            today = datetime.today().date()
+            prices = data.retrieve_historical_data(from_date=start_date.strftime('%d/%m/%Y'), to_date=today.strftime('%d/%m/%Y'))
+            prices.index = prices.index.date
+            prices = prices.to_dict()['Close'] 
+            
         return prices, currency
 
-    def get_stock_data(self, via):
-        ids, types, symbols = {}, {}, {}
-        if via == 'Degiro':
-            url = f'https://trader.degiro.nl/trading/secure/v5/update/{self.accountID};jsessionid={self.sessionID}'
-            portfolio_query = self.session.get(url,params={'portfolio':0})
-            portfolio = json.loads(portfolio_query.text)['portfolio']['value']
-            type_map = {'ETF':'Funds', 'STOCK':'Stock'}
-            for product in portfolio:
-                url = f'https://trader.degiro.nl/product_search/secure/v5/products/info?intAccount={self.accountID}&sessionId={self.sessionID}'
-                res = self.session.post(url,headers=self.headers,data='["'+product["id"]+'"]')
-                data = json.loads(res.text)['data'][product["id"]]
-                if 'vwdIdentifierType' in data.keys():
-                    stock_id = data['vwdId'] if data['vwdIdentifierType'] == 'issueid' else data['vwdIdSecondary']
-                    isin = data.get('isin') 
-                    ids[isin] = stock_id
-                    types[isin] = type_map[data['productType']]
-                    symbols[isin] = data['symbol']
 
-        return ids, types, symbols
-    
-    def get_degiro_data(self, start_date):
+    def get_asset_data(self, transactions):
+        exchanges = {
+            'MIL':'Milan',
+            'XET':'Xetra',
+            'FRA':'Frankfurt',
+            'EPA':'Paris',
+            'EAM':'Amsterdam',
+            'NDQ':'NASDAQ',
+            'NSY':'NYSE',
+            'EURO':''
+        }
+
+        countries = {
+            'MIL':'italy',
+            'XET':'germany',
+            'FRA':'germany',
+            'EPA':'france',
+            'EAM':'netherlands',
+            'NDQ':'united states',
+            'NSY':'united states',
+            'EURO':'euro zone'
+        }
+
+        path = 'data/assets_data.csv'
         types, symbols = {}, {}
-        url = f'https://trader.degiro.nl/trading/secure/v5/update/{self.accountID};jsessionid={self.sessionID}'
-        portfolio_query = self.session.get(url,params={'portfolio':0})
-        portfolio = json.loads(portfolio_query.text)['portfolio']['value']
-        type_map = {'ETF':'Funds', 'STOCK':'Stock'}
-        for product in portfolio:
-            url = f'https://trader.degiro.nl/product_search/secure/v5/products/info?intAccount={self.accountID}&sessionId={self.sessionID}'
-            res = self.session.post(url,headers=self.headers,data='["'+product["id"]+'"]')
-            data = json.loads(res.text)['data'][product["id"]]
-            if data.get('productType') in ['ETF', 'STOCK']:
-                isin = data.get('isin') 
-                types[isin] = type_map[data['productType']]
-                symbols[isin] = data['symbol']
+        new_assets_data = []
+        type_map = {'stocks': 'Stock', 'etfs': 'Funds', 'currencies':'Currencies'}
+        if Path(path).is_file():
+            assets_data = pd.read_csv(path)
+            assets_dict = assets_data.to_dict('list')
+            types = {id: type_map[value] for id, value in zip(assets_dict['ID'], assets_dict['pair_type'])}
+            symbols = {id: value for id, value in zip(assets_dict['ID'], assets_dict['symbol'])}
+            assets = set(assets_data.groupby(['ID', 'EXCHANGE', 'ASSET']).groups.keys())
 
+            transactions = transactions - assets
+
+        for id, exchange, asset in transactions:
+            country = countries[exchange]
+            parser_exchange = exchanges[exchange]
+            try:
+                results =  investpy.search_quotes(text=id, 
+                                                products=['stocks', 'etfs','currencies'], 
+                                                countries=[country], 
+                                                n_results=5)
+                for result in results:
+                    if result.exchange == parser_exchange:
+                        types[id] = type_map[result.pair_type]
+                        symbols[id] = result.symbol
+                        new_asset = vars(result)
+                        new_asset.update({'ID':id, 'EXCHANGE':exchange, 'ASSET':asset})
+                        new_assets_data.append(new_asset)
+            except:
+                print(f'Missing data for {asset}')        
+        new_assets_data = pd.DataFrame(new_assets_data)
+        if Path(path).is_file():
+            assets_data = pd.concat([assets_data, new_assets_data], ignore_index=True)
+        else:
+            assets_data = new_assets_data
+        
+        assets_data.to_csv(path, index=False)
+        ids = assets_data.to_dict()['ID'].values()
+        assets_data.drop(['ID', 'EXCHANGE', 'ASSET'], axis=1, inplace=True)
+        self.assets_data = {id: data for id, data in zip(
+                                    ids,
+                                    assets_data.to_dict('index').values())}
+
+        
+        return types, symbols
+
+    def get_degiro_data(self, start_date):
         end_date = datetime.now().date()
         data = []
         for report_type in ['cashAccountReport', 'transactionReport']:
@@ -141,4 +192,4 @@ class webparser:
             record = StringIO(urlopen(Request(link)).read().decode('utf-8'))
             data.append(pd.read_csv(record))
 
-        return data + [types, symbols]
+        return data
