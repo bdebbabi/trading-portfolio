@@ -1,17 +1,19 @@
-from pyotp import TOTP
+from urllib.request import Request, urlopen
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from io import StringIO
 import base64
 import json
-import requests
-from datetime import date, datetime, timedelta
+
+from investpy.utils.search_obj import SearchObj, random_user_agent
 from Historic_Crypto import HistoricalData, LiveCryptoData
 from coinbase.wallet.client import Client
-from urllib.request import urlopen, Request
-from io import StringIO
+from pyotp import TOTP
+from lxml import html
 import pandas as pd
 import investpy
-from pathlib import Path
-from investpy.utils.search_obj import SearchObj, random_user_agent
-from lxml import html
+import requests
+
 
 class webparser:
 
@@ -32,7 +34,6 @@ class webparser:
         self.coinbase_secret = dec(authentification['COINBASE']['API_SECRET'])
 
         self.headers = {'Content-Type': 'application/json'}
-        self.login()
 
     def login(self):
         self.coinbase_login()
@@ -108,27 +109,11 @@ class webparser:
 
 
     def get_asset_data(self, transactions):
-        exchanges = {
-            'MIL':'Milan',
-            'XET':'Xetra',
-            'FRA':'Frankfurt',
-            'EPA':'Paris',
-            'EAM':'Amsterdam',
-            'NDQ':'NASDAQ',
-            'NSY':'NYSE',
-            'EURO':''
-        }
-
-        countries = {
-            'MIL':'italy',
-            'XET':'germany',
-            'FRA':'germany',
-            'EPA':'france',
-            'EAM':'netherlands',
-            'NDQ':'united states',
-            'NSY':'united states',
-            'EURO':'euro zone'
-        }
+        data = pd.read_csv('data/exchanges.csv',index_col='exchange')
+        data.fillna('', inplace=True)
+        
+        exchanges = data.to_dict()['name'] 
+        countries = data.to_dict()['country']
 
         path = 'data/assets_data.csv'
         types, symbols = {}, {}
@@ -142,7 +127,7 @@ class webparser:
             assets = set(assets_data.groupby(['ID', 'EXCHANGE', 'ASSET']).groups.keys())
 
             transactions = transactions - assets
-
+        missing = []
         for id, exchange, asset in transactions:
             country = countries[exchange]
             parser_exchange = exchanges[exchange]
@@ -159,7 +144,8 @@ class webparser:
                         new_asset.update({'ID':id, 'EXCHANGE':exchange, 'ASSET':asset})
                         new_assets_data.append(new_asset)
             except:
-                print(f'Missing data for {asset}')        
+                print(f'Missing data for {asset}')   
+                missing.append(asset)     
         new_assets_data = pd.DataFrame(new_assets_data)
         if Path(path).is_file():
             assets_data = pd.concat([assets_data, new_assets_data], ignore_index=True)
@@ -174,7 +160,7 @@ class webparser:
                                     assets_data.to_dict('index').values())}
 
         
-        return types, symbols
+        return types, symbols, missing
 
     def get_degiro_data(self, start_date):
         end_date = datetime.now().date()

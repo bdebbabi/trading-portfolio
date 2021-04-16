@@ -10,7 +10,6 @@
 
 .type-card {
     display: flex;
-    /* background-color: rgb(34,34,34); */
 }
 
 .type-name {
@@ -103,7 +102,7 @@ text{
 
 .date-group-labels {
   border-radius: 0px;
-  font: 18px Lato;
+  font: 20px Lato;
   padding: 6px 7px;
   background-color: #222222;
   cursor: pointer;
@@ -141,13 +140,36 @@ text{
 
 .detailed-label {
     border-radius: 0px;
-    font: 20px Lato;
-    padding: 6px 7px;
+    font-size: xxx-large;
+    margin-top: -15px;
     background-color: #222222;
     cursor: pointer;
   }
   
 .detailed-label.detailed-label-checked{
-background-color: #343434;
-box-shadow: inset 0px 1px 2px rgba(0, 0, 0, 0.2);
+    font-weight: bold;
+}
+
+.update-transactions-button{
+  font-size:x-large;
+  background-color: transparent;
+  border-color: transparent;
+}
+.detailed-item{
+  text-align: right;
+}
+
+#prices-button, #transactions-button{
+  color: white;
+}
+
+#prices-button:disabled, #transactions-button:disabled{
+  color: #343434;
+}
+
+.toast{
+  position: inherit;
+  margin-left: 75%;
+  max-width: 20%;
+  font-size: 20px;
 }
