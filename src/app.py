@@ -210,6 +210,9 @@ def serve_layout():
                             style_cell={
                                 'textAlign': 'left', 'backgroundColor': BGCOLOR, 'color': 'white'},
                             style_as_list_view=True,
+                            tooltip_header={'gain':'With dividends and fees'},
+                            tooltip_delay=0,
+                            tooltip_duration=None,
                             style_data_conditional=[
                                 {
                                     'if': {
@@ -435,16 +438,19 @@ def display_time_series(typ, data_type, detailed, date, signal):
         yaxis={'fixedrange': True}
     )
     fig.update_xaxes(showgrid=False, zeroline=False, tickformatstops = [
-        dict(dtickrange=[3600000, 36000000], value="%H:%M h"),
+        dict(dtickrange=[3600000, 36000000], value="%H:%M"),
         dict(dtickrange=[36000000, 86400000], value="%d %b"),
         dict(dtickrange=[86400000, 604800000], value="%d %b"),
         dict(dtickrange=[604800000, "M1"], value="%d %b"),
         dict(dtickrange=["M1", "M12"], value="%b %y"),
         dict(dtickrange=["M12", None], value="%b %y")
         ])
-    fig.update_yaxes(showgrid=False, zeroline=False)
-    fig.update_traces(hovertemplate='%{x}: <b>%{y}</b>')
 
+    for ser in fig['data']:
+        ser['text']= pd.to_datetime(df['date']).dt.strftime('%d %b %Y').tolist()
+        ser['hovertemplate']='%{text}: <b>%{y}</b>'
+
+    fig.update_yaxes(showgrid=False, zeroline=False)
     return fig
 
 
