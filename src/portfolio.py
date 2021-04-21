@@ -6,7 +6,7 @@ from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import json
-
+import re
 
 class Portfolio:
     def __init__(self, settings):
@@ -67,8 +67,8 @@ class Portfolio:
                                         self.eur_to_usd)
             self.assets[id].add_transaction(transaction)
             typ, asset = line['type'], line['asset']
-            self.types[typ] = [asset] if typ not in self.types else [
-                *self.types[typ], asset]
+            self.types[typ] = [asset] if typ not in self.types else list(set([
+                *self.types[typ], asset]))
             self.types.pop(np.NaN, None)
         assets = {'assets': [
             asset.name for asset in self.assets.values()], 'types': self.types}
@@ -172,3 +172,34 @@ class Portfolio:
             self.holdings[key] = pd.DataFrame(
                 holdings[key]).sort_values('value', ascending=False)
             self.holdings[key].to_csv(f'data/holdings_{key}.csv', index=False)
+    
+    def get_composition(self):
+        assets_total = {'countries':{}, 'regions':{}, 'sectors':{}, 'holdings':{}, 'holdings_types':{}}
+        for asset in self.assets.values():
+            if asset.type == 'Funds':
+                compositions = asset.get_composition()
+                for composition, values in compositions.items():
+                    for key, value in values.items():
+                        if composition != 'holdings_types':
+                            assets_total[composition][key] = assets_total[composition].get(key, 0) + value
+                        else:
+                            assets_total[composition][key] =  value
+ 
+        for key, values in assets_total.items():
+            if key != 'holdings_types':
+                total = np.round(np.sum(list(values.values())),2)
+                value = {}
+                for k,v in values.items():
+                    if key not in ['holdings', 'holdings_types']:
+                        k = k[0].upper() + k[1:]
+                        k = ' '.join(re.findall('[A-Z][^A-Z]*', k))
+                    value[k] = np.round(100*v/total,2)
+                assets_total[key] = dict(sorted(value.items(), key=lambda item: item[1], reverse=True))
+                first = list(assets_total[key].keys())[0]
+                assets_total[key][first] = np.round(assets_total[key][first] + 100 - np.sum(list(assets_total[key].values())),2)
+
+        self.composition = assets_total
+        with open('data/composition.json', 'w') as f:
+            json.dump(assets_total, f, indent=4)
+
+        return assets_total

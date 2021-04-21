@@ -128,6 +128,17 @@ class Asset:
 
         return prices
 
+    def get_composition(self):
+        compositions =  self.web_parser.get_asset_composition(self.id)
+        self.composition = compositions
+        last_value = self.values[list(self.values.keys())[-1]]
+        for composition, values in compositions.items():
+            if composition != 'holdings_types':
+                total = np.sum(list(values.values()))
+                compositions[composition] = {key: last_value*ratio/total for key, ratio in values.items()}
+        
+        return compositions
+
     def __repr__(self):
         rep = textwrap.dedent(
             f'''Asset(name:{self.name}, 

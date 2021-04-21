@@ -192,6 +192,45 @@ def serve_layout():
                             dcc.Graph(id="sunburst")
                         ])
                         ]),
+                dbc.Tab(label='Exposure', children=[
+                        html.Div([
+                            dcc.Graph(id="exposure-sunburst"),
+                            html.P('Top Holdings', style={'margin-left': '15%', 'font-size': '30px'}),
+                            dash_table.DataTable(
+                                id="exposure-table",
+                                columns=[
+                                    {'name':'Holding', 'id':'holding'},
+                                    {'name':'Weight', 'id':'ratio', 'type': 'numeric', 'format': Format(
+                                    symbol=Symbol.yes, symbol_suffix=' %')},
+                                    {'name':'Sector', 'id':'type'},
+                                ],
+                                style_cell={
+                                    'textAlign': 'left', 
+                                    'backgroundColor': BGCOLOR, 
+                                    'color': 'white',
+                                    'overflow': 'hidden',
+                                    'textOverflow': 'ellipsis',
+                                    'maxWidth': 0
+                                    },
+                                style_as_list_view=True,
+                                style_header={
+                                    'fontWeight': 'bold'
+                                },
+                                style_table={
+                                    'width': '70%',
+                                    'margin-left': '15%'
+                                },
+                                cell_selectable=False,
+                                tooltip_delay=0,
+                                tooltip_duration=None,
+                                style_cell_conditional=[
+                                    {'if': {'column_id': 'holdings'},'width': '40%'},
+                                    {'if': {'column_id': 'ratio'},'width': '20%'},
+                                    {'if': {'column_id': 'type'},'width': '40%'},
+                                ]
+                                )
+                        ]),
+                        ]),
                 dbc.Tab(label='Holdings', children=[
                         dash_table.DataTable(
                             id='holdings',
@@ -213,6 +252,7 @@ def serve_layout():
                             tooltip_header={'gain':'With dividends and fees'},
                             tooltip_delay=0,
                             tooltip_duration=None,
+                            cell_selectable=False,
                             style_data_conditional=[
                                 {
                                     'if': {
@@ -530,7 +570,7 @@ def display_sunburst(data_type, detailed, date, signal):
 
     titles = {'gains': 'gain €', 'gains_p': 'gain %',
               'values': 'Value', 'prices': 'Price'}
-    font = dict(size=20, color='#ffffff', family='Lato')
+    font = dict(size=30, color='#ffffff', family='Lato')
     if neg_fig['data'] and pos_fig['data']:
         fig = make_subplots(rows=1, cols=2, specs=[[{"type": "domain"}, {"type": "domain"}]],
                             subplot_titles=(f"Positive {titles[data_type]}<br>", f"Negative {titles[data_type]}"))
@@ -555,9 +595,78 @@ def display_sunburst(data_type, detailed, date, signal):
         font={'size': 20},
         hoverlabel={'font_size': 20}
     )
+    fig.update_traces(textfont_color='rgb(54,54,54)')
 
     return fig
 
+@app.callback(
+    [Output('exposure-sunburst', "figure"),
+    Output('exposure-table', "data"),
+    Output("exposure-table", "tooltip_data")
+    ],
+
+    [Input("detailed", "value"), 
+    Input('signal', 'children')])
+def exposure(detailed, signal):
+    with open('data/composition.json') as f:
+        data = json.load(f)
+    
+    countries_data = pd.read_csv('assets/countries.csv')
+    countries = pd.DataFrame({'country':list(data['countries'].keys()), 'ratio':list(data['countries'].values())})
+    countries = countries.merge(countries_data[['country', 'sub-region']], left_on='country', right_on='country')
+    
+    path = ['sub-region', 'country'] if detailed else ['sub-region']
+    countries_fig = px.sunburst(countries, path=path, values='ratio')
+    countries_fig.update_traces(hovertemplate='<b>%{label}: %{value}%</b>')
+
+    sectors_map= {
+            "Technology": "Sensitive",
+            "Real Estate": "Cyclical",
+            "Utilities": "Defensive",
+            "Consumer Cyclical": "Cyclical",
+            "Communication Services": "Sensitive",
+            "Financial Services": "Cyclical",
+            "Industrials": "Sensitive",
+            "Healthcare": "Defensive",
+            "Consumer Defensive": "Defensive",
+            "Basic Materials": "Cyclical",
+            "Energy": "Sensitive"
+        }
+    main_sector = [sectors_map[sector] for sector in list(data['sectors'].keys())]
+    sectors = pd.DataFrame({'main_sector':main_sector, 'sector':list(data['sectors'].keys()), 'ratio':list(data['sectors'].values())})
+    path = ['main_sector', 'sector'] if detailed else ['main_sector']
+
+    colors = px.colors.qualitative.Plotly
+    color_map = {sector: color for sector, color in zip(set(main_sector), colors)}
+    sectors_fig = px.sunburst(sectors, path=path, values='ratio', color='main_sector', color_discrete_map=color_map)
+    sectors_fig.update_layout(showlegend=False)
+    sectors_fig.update_traces(hovertemplate='<b>%{label}: %{value}%</b>')
+
+    font = dict(size=30, color='#ffffff', family='Lato')
+
+    fig = make_subplots(rows=1, cols=2, specs=[[{"type": "domain"}, {"type": "domain"}]],
+                            subplot_titles=(f"Regions", f"Sectors"))
+    fig.add_trace(countries_fig['data'][0], row=1, col=1)
+    fig.add_trace(sectors_fig['data'][0], row=1, col=2)
+    for i in fig['layout']['annotations']:
+        i['font'] = font
+
+    fig.update_layout(
+        paper_bgcolor=BGCOLOR,
+        plot_bgcolor=BGCOLOR,
+        margin=dict(t=100, b=10, r=10, l=10),
+        font={'size': 20, 'color':'rgb(234,234,234)'},
+        hoverlabel={'font_size': 20},
+        showlegend=False
+    )
+    fig.update_traces(textfont_color='rgb(54,54,54)')
+
+    holdings_types = [data['holdings_types'][holding] for holding in data['holdings'].keys()]
+    holdings = pd.DataFrame({'holding':list(data['holdings'].keys()), 'ratio':list(data['holdings'].values()), 'type':holdings_types})
+    holdings = holdings.iloc[0:20] if detailed else holdings.iloc[0:10]
+    tooltip_data = [{'holding': holding} for holding in holdings['holding']]
+
+    return fig, holdings.to_dict('records'), tooltip_data
 
 app.layout = serve_layout
 
