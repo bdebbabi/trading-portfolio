@@ -176,7 +176,7 @@ class Portfolio:
     def get_composition(self):
         assets_total = {'countries':{}, 'regions':{}, 'sectors':{}, 'holdings':{}, 'holdings_types':{}}
         for asset in self.assets.values():
-            if asset.type == 'Funds':
+            if asset.type in ['Funds', 'Stock']:
                 compositions = asset.get_composition()
                 for composition, values in compositions.items():
                     for key, value in values.items():
@@ -184,7 +184,6 @@ class Portfolio:
                             assets_total[composition][key] = assets_total[composition].get(key, 0) + value
                         else:
                             assets_total[composition][key] =  value
- 
         for key, values in assets_total.items():
             if key != 'holdings_types':
                 total = np.round(np.sum(list(values.values())),2)

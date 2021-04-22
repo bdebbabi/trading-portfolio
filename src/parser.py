@@ -180,19 +180,23 @@ class webparser:
 
         return data
 
-    def get_asset_composition(self, id):
+    def get_asset_composition(self, id, asset_type):
         def get_composition(id, comp_type):
             url=f'https://api-global.morningstar.com/sal-service/v1/etf/{comp_type}/{id}/data?languageId=en&locale=en&clientId=MDC&benchmarkId=category&component=sal-components-mip-country-exposure&version=3.31.0'
             headers = {'ApiKey': 'lstzFDEOhfFNMLikKa0am9mgEKLBl49T'}
             req = requests.get(url, headers=headers)
             return json.loads(req.text) 
 
-        def get_site_id(id):
+        def get_tick_ex(id):
             req = requests.get(f'https://www.morningstar.com/search?query={id}')
             page = html.fromstring(req.content)
             exchange = page.xpath("//span[@class='mdc-security-module__exchange']/text()")[0]
             ticker = page.xpath("//span[@class='mdc-security-module__ticker']/text()")[0]
 
+            return exchange, ticker
+
+        def get_parser_site_id(id):
+            exchange, ticker = get_tick_ex(id)
             url = f'https://www.morningstar.com/etfs/{exchange}/{ticker}/portfolio'
             req = requests.get(url)
             pos = req.text.find('byId')
@@ -200,26 +204,60 @@ class webparser:
             site_id = req.text[pos:pos+10]
             
             return site_id
-        
-        site_id = get_site_id(id)
-        req = get_composition(site_id, 'portfolio/regionalSectorIncludeCountries')
-        countries = {country['name']:country['percent'] for country in req['fundPortfolio']['countries'] if country.get('percent',0)!=0}
-        regions = {region['name']:region['percent'] for region in req['fundPortfolio']['regions'] if region.get('percent',0)!=0}
 
-        req = get_composition(site_id, 'portfolio/v2/sector')
-        sectors = {k:v for k,v in list(req['EQUITY']['fundPortfolio'].items())[1:] if v is not None}
+        def get_site_id(id):
+            path = 'data/composition_ids.json'
+            composition_ids = {}
+            if Path(path).is_file():
+                with open(path, 'r') as f:
+                    composition_ids = json.load(f)
+            if id in composition_ids:
+                site_id = composition_ids[id]
+            else:
+                site_id = get_parser_site_id(id)
+                composition_ids[id] = site_id
+                with open(path, 'w') as f:
+                    json.dump(composition_ids, f, indent=4)
+            return site_id 
 
-        req = get_composition(site_id, 'portfolio/holding')
-        if req['holdingSummary']['topHoldingWeighting'] == 100 and req['numberOfHolding'] == 1:
-            site_id = get_site_id(req['holdingActiveShare']['etfBenchmarkProxyName'])
+        if asset_type == 'Funds':
+            site_id = get_site_id(id)
+            req = get_composition(site_id, 'portfolio/regionalSectorIncludeCountries')
+            countries = {country['name']:country['percent'] for country in req['fundPortfolio']['countries'] if country.get('percent',0)!=0}
+            regions = {region['name']:region['percent'] for region in req['fundPortfolio']['regions'] if region.get('percent',0)!=0}
+
+            req = get_composition(site_id, 'portfolio/v2/sector')
+            sectors = {k:v for k,v in list(req['EQUITY']['fundPortfolio'].items())[1:] if v is not None}
+
             req = get_composition(site_id, 'portfolio/holding')
+            if req['holdingSummary']['topHoldingWeighting'] == 100 and req['numberOfHolding'] == 1:
+                site_id = get_site_id(req['holdingActiveShare']['etfBenchmarkProxyName'])
+                req = get_composition(site_id, 'portfolio/holding')
 
-        holdings, holdings_types = {}, {}
-        for holding_type in ['equityHoldingPage', 'boldHoldingPage', 'otherHoldingPage']:
-            holdings.update({holding['securityName']:holding['weighting'] for holding in req[holding_type]['holdingList']})
-            holdings_types.update({holding['securityName']:holding['sector'] for holding in req[holding_type]['holdingList']})
-        holdings =  dict(sorted(holdings.items(), key=lambda item: item[1], reverse=True))
+            holdings, holdings_types = {}, {}
+            for holding_type in ['equityHoldingPage', 'boldHoldingPage', 'otherHoldingPage']:
+                holdings.update({holding['securityName']:holding['weighting'] for holding in req[holding_type]['holdingList']})
+                holdings_types.update({holding['securityName']:holding['sector'] for holding in req[holding_type]['holdingList']})
+            holdings =  dict(sorted(holdings.items(), key=lambda item: item[1], reverse=True))
+        
+        elif asset_type == 'Stock':
+            exchange, ticker = get_tick_ex(id)
+            url = f'https://www.morningstar.com/stocks/{exchange}/{ticker}/quote'
+            req = requests.get(url)
 
+            pos = req.text.find('sector:{value')
+            sector = req.text[pos:pos+40].split('"')[1].replace(' ','')
+            sector = sector[0].lower()+ sector[1:]
+            pos = req.text.find('headquarterCountry:{value')
+            country = req.text[pos:pos+100].split('"')[1].replace(' ','')
+            country = country[0].lower()+ country[1:]
+            page = html.fromstring(req.content)
+            name = page.xpath("//span[@itemprop='name']/text()")[0]
+            countries = {country: 100}
+            regions = {}
+            sectors = {sector: 100}
+            holdings = {name: 100}
+            holdings_types = {name: sector}
 
         composition = {'countries':countries, 'regions':regions, 'sectors':sectors, 'holdings':holdings, 'holdings_types':holdings_types}
         

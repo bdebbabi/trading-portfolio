@@ -64,6 +64,8 @@ def update_portfolio(update_transactions=True):
     portfolio.get_historic_data()
     portfolio.get_data()
     portfolio.get_holdings()
+    portfolio.get_composition()
+
     return missing
 
 
