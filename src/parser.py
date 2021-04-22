@@ -109,7 +109,7 @@ class webparser:
 
 
     def get_asset_data(self, transactions):
-        data = pd.read_csv('data/exchanges.csv',index_col='exchange')
+        data = pd.read_csv('assets/exchanges.csv',index_col='exchange')
         data.fillna('', inplace=True)
         
         exchanges = data.to_dict()['name'] 
@@ -214,7 +214,11 @@ class webparser:
             if id in composition_ids:
                 site_id = composition_ids[id]
             else:
-                site_id = get_parser_site_id(id)
+                if asset_type == 'Funds':
+                    site_id = get_parser_site_id(id)
+                else:
+                    exchange, ticker = get_tick_ex(id)
+                    site_id = exchange+'/'+ticker
                 composition_ids[id] = site_id
                 with open(path, 'w') as f:
                     json.dump(composition_ids, f, indent=4)
@@ -237,27 +241,27 @@ class webparser:
             holdings, holdings_types = {}, {}
             for holding_type in ['equityHoldingPage', 'boldHoldingPage', 'otherHoldingPage']:
                 holdings.update({holding['securityName']:holding['weighting'] for holding in req[holding_type]['holdingList']})
-                holdings_types.update({holding['securityName']:holding['sector'] for holding in req[holding_type]['holdingList']})
+                holdings_types.update({holding['securityName']:{'sector':holding['sector'], 'country':holding['country']} for holding in req[holding_type]['holdingList']})
             holdings =  dict(sorted(holdings.items(), key=lambda item: item[1], reverse=True))
         
         elif asset_type == 'Stock':
-            exchange, ticker = get_tick_ex(id)
-            url = f'https://www.morningstar.com/stocks/{exchange}/{ticker}/quote'
+            site_id = get_site_id(id)
+            url = f'https://www.morningstar.com/stocks/{site_id}/quote'
             req = requests.get(url)
-
-            pos = req.text.find('sector:{value')
-            sector = req.text[pos:pos+40].split('"')[1].replace(' ','')
-            sector = sector[0].lower()+ sector[1:]
-            pos = req.text.find('headquarterCountry:{value')
-            country = req.text[pos:pos+100].split('"')[1].replace(' ','')
-            country = country[0].lower()+ country[1:]
+            
             page = html.fromstring(req.content)
+            data = page.xpath("//script/text()")[0]
+            pos = data.find('sector:{value')
+            sector = data[pos:pos+40].split('"')[1]
+            pos = data.find('headquarterCountry:{value')
+            country = data[pos:pos+100].split('"')[1]
             name = page.xpath("//span[@itemprop='name']/text()")[0]
-            countries = {country: 100}
+            
+            countries = {country[0].lower()+ country[1:].replace(' ',''): 100}
             regions = {}
-            sectors = {sector: 100}
+            sectors = {sector[0].lower()+ sector[1:].replace(' ',''): 100}
             holdings = {name: 100}
-            holdings_types = {name: sector}
+            holdings_types = {name: {'sector': sector, 'country':country}}
 
         composition = {'countries':countries, 'regions':regions, 'sectors':sectors, 'holdings':holdings, 'holdings_types':holdings_types}
         

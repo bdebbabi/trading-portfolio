@@ -196,8 +196,8 @@ def serve_layout():
                         ]),
                 dbc.Tab(label='Exposure', children=[
                         html.Div([
-                            dcc.Graph(id="exposure-sunburst"),
-                            html.P('Top Holdings', style={'margin-left': '15%', 'font-size': '30px'}),
+                            dcc.Graph(id="exposure-sunburst", className="exposure-sunburst"),
+                            html.P('Top Holdings', style={'margin-left': '10%', 'font-size': '30px'}),
                             dash_table.DataTable(
                                 id="exposure-table",
                                 columns=[
@@ -205,6 +205,7 @@ def serve_layout():
                                     {'name':'Weight', 'id':'ratio', 'type': 'numeric', 'format': Format(
                                     symbol=Symbol.yes, symbol_suffix=' %')},
                                     {'name':'Sector', 'id':'type'},
+                                    {'name':'Country', 'id':'country'},
                                 ],
                                 style_cell={
                                     'textAlign': 'left', 
@@ -219,16 +220,17 @@ def serve_layout():
                                     'fontWeight': 'bold'
                                 },
                                 style_table={
-                                    'width': '70%',
-                                    'margin-left': '15%'
+                                    'width': '90%',
+                                    'margin-left': '10%'
                                 },
                                 cell_selectable=False,
                                 tooltip_delay=0,
                                 tooltip_duration=None,
                                 style_cell_conditional=[
-                                    {'if': {'column_id': 'holdings'},'width': '40%'},
-                                    {'if': {'column_id': 'ratio'},'width': '20%'},
-                                    {'if': {'column_id': 'type'},'width': '40%'},
+                                    {'if': {'column_id': 'holding'},'width': '30%'},
+                                    {'if': {'column_id': 'ratio'},'width': '15%'},
+                                    {'if': {'column_id': 'type'},'width': '25%'},
+                                    {'if': {'column_id': 'country'},'width': '30%'},
                                 ]
                                 )
                         ]),
@@ -663,8 +665,12 @@ def exposure(detailed, signal):
     )
     fig.update_traces(textfont_color='rgb(54,54,54)')
 
-    holdings_types = [data['holdings_types'][holding] for holding in data['holdings'].keys()]
-    holdings = pd.DataFrame({'holding':list(data['holdings'].keys()), 'ratio':list(data['holdings'].values()), 'type':holdings_types})
+    holdings_types = [data['holdings_types'][holding]['sector'] for holding in data['holdings'].keys()]
+    holdings_countries = [data['holdings_types'][holding]['country'] for holding in data['holdings'].keys()]
+    holdings = pd.DataFrame({'holding':list(data['holdings'].keys()), 
+                             'ratio':list(data['holdings'].values()), 
+                             'type':holdings_types,
+                             'country':holdings_countries})
     holdings = holdings.iloc[0:20] if detailed else holdings.iloc[0:10]
     tooltip_data = [{'holding': holding} for holding in holdings['holding']]
 

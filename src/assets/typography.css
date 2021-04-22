@@ -14,12 +14,9 @@
     background-color: black;
   }
 
-/* #exposure-table{
-    position: absolute !important ;
-    width: 70%;
-    margin-left: 15%;
-    table-layout: fixed;
-} */
+.exposure-sunburst{
+  margin-bottom: 40px ;
+} 
 
 .type-card {
     display: flex;
