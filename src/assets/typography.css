@@ -188,3 +188,7 @@ text{
   max-width: 20%;
   font-size: 20px;
 }
+
+.dash-spreadsheet-inner input:not([type="radio"]):not([type="checkbox"]){
+  color: white !important;
+}

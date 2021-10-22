@@ -231,7 +231,11 @@ def serve_layout():
                                     {'if': {'column_id': 'ratio'},'width': '15%'},
                                     {'if': {'column_id': 'type'},'width': '25%'},
                                     {'if': {'column_id': 'country'},'width': '30%'},
-                                ]
+                                ],
+                                filter_action='native',
+                                sort_action='native',
+                                page_action='native',
+                                page_size= 10
                                 )
                         ]),
                         ]),
@@ -671,7 +675,7 @@ def exposure(detailed, signal):
                              'ratio':list(data['holdings'].values()), 
                              'type':holdings_types,
                              'country':holdings_countries})
-    holdings = holdings.iloc[0:20] if detailed else holdings.iloc[0:10]
+    # holdings = holdings.iloc[0:20] if detailed else holdings.iloc[0:10]
     tooltip_data = [{'holding': holding} for holding in holdings['holding']]
 
     return fig, holdings.to_dict('records'), tooltip_data

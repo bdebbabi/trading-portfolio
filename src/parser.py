@@ -65,6 +65,7 @@ class webparser:
 
     def get_asset_prices(self, asset_id, asset_type, start_date):
         if asset_type == 'Crypto':
+            start_date = start_date-timedelta(1)
             stock_info = HistoricalData(asset_id+'-USD',
                                         86400,
                                         start_date.strftime('%Y-%m-%d-%H-%M'), 
