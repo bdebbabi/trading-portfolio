@@ -238,11 +238,13 @@ class webparser:
             if req['holdingSummary']['topHoldingWeighting'] == 100 and req['numberOfHolding'] == 1:
                 site_id = get_site_id(req['holdingActiveShare']['etfBenchmarkProxyName'])
                 req = get_composition(site_id, 'portfolio/holding')
-
             holdings, holdings_types = {}, {}
             for holding_type in ['equityHoldingPage', 'boldHoldingPage', 'otherHoldingPage']:
-                holdings.update({holding['securityName']:holding['weighting'] for holding in req[holding_type]['holdingList']})
-                holdings_types.update({holding['securityName']:{'sector':holding['sector'], 'country':holding['country']} for holding in req[holding_type]['holdingList']})
+                for holding in req[holding_type]['holdingList']:
+                    securityName = holding['securityName'].rsplit(' ', 1)[0] if holding['securityName'][-1]=='%' else holding['securityName'] 
+                    holdings.update({securityName:holdings.get(securityName, 0) + holding['weighting']})
+                    sector = holding['sector'] if holding['sector'] else holding['secondarySectorName'] 
+                    holdings_types.update({securityName:{'sector':sector, 'country':holding['country']}})
             holdings =  dict(sorted(holdings.items(), key=lambda item: item[1], reverse=True))
         
         elif asset_type == 'Stock':

@@ -134,9 +134,7 @@ class Asset:
         last_value = self.values[list(self.values.keys())[-1]]
         for composition, values in compositions.items():
             if composition != 'holdings_types':
-                total = np.sum(list(values.values()))
-                compositions[composition] = {key: last_value*ratio/total for key, ratio in values.items()}
-        
+                compositions[composition] = {key: [last_value*ratio/100, f'{ratio:.2f}%'] for key, ratio in values.items()}
         return compositions
 
     def __repr__(self):

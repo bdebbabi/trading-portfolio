@@ -175,17 +175,23 @@ class Portfolio:
     
     def get_composition(self):
         assets_total = {'countries':{}, 'regions':{}, 'sectors':{}, 'holdings':{}, 'holdings_types':{}}
+        funds, regions = {}, {}
         for asset in self.assets.values():
             if asset.type in ['Funds', 'Stock']:
                 compositions = asset.get_composition()
+                funds[asset.name] = compositions['holdings']
+                regions[asset.name] = compositions['regions']
                 for composition, values in compositions.items():
                     for key, value in values.items():
                         if composition != 'holdings_types':
-                            assets_total[composition][key] = assets_total[composition].get(key, 0) + value
+                            assets_total[composition][key] = assets_total[composition].get(key, 0) + value[0]
                         else:
                             assets_total[composition][key] =  value
+        raw_assets_total = {}
         for key, values in assets_total.items():
             if key != 'holdings_types':
+                values = dict(sorted(values.items(), key=lambda item: item[1], reverse=True))
+                raw_assets_total[key] = values.copy()
                 total = np.round(np.sum(list(values.values())),2)
                 value = {}
                 for k,v in values.items():
@@ -193,12 +199,17 @@ class Portfolio:
                         k = k[0].upper() + k[1:]
                         k = ' '.join(re.findall('[A-Z][^A-Z]*', k))
                     value[k] = np.round(100*v/total,2)
-                assets_total[key] = dict(sorted(value.items(), key=lambda item: item[1], reverse=True))
-                first = list(assets_total[key].keys())[0]
-                assets_total[key][first] = np.round(assets_total[key][first] + 100 - np.sum(list(assets_total[key].values())),2)
-
+                assets_total[key] = dict(value.items())
+                # first = list(assets_total[key].keys())[0]
+                # assets_total[key][first] = np.round(assets_total[key][first] + 100 - np.sum(list(assets_total[key].values())),2)
+        
+        with open('data/composition_raw.json', 'w') as f:
+            json.dump(raw_assets_total, f, indent=4)
         self.composition = assets_total
         with open('data/composition.json', 'w') as f:
             json.dump(assets_total, f, indent=4)
-
+        with open('data/funds.json', 'w') as f:
+            json.dump(funds, f, indent=4)
+        with open('data/regions.json', 'w') as f:
+            json.dump(regions, f, indent=4)
         return assets_total
