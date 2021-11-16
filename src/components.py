@@ -129,7 +129,7 @@ class Asset:
         return prices
 
     def get_composition(self):
-        compositions =  self.web_parser.get_asset_composition(self.id, self.type)
+        compositions =  self.web_parser.get_asset_composition(self.id, self.type, self.name)
         self.composition = compositions
         last_value = self.values[list(self.values.keys())[-1]]
         for composition, values in compositions.items():

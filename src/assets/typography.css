@@ -192,3 +192,7 @@ text{
 .dash-spreadsheet-inner input:not([type="radio"]):not([type="checkbox"]){
   color: white !important;
 }
+
+a {
+  color: white;
+}

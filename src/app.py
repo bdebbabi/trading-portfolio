@@ -8,6 +8,7 @@ from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 from plotly.subplots import make_subplots
 import dash_html_components as html
+import plotly.figure_factory as ff
 import dash_core_components as dcc
 from dash import callback_context
 import plotly.express as px
@@ -15,12 +16,14 @@ import dash_daq as daq
 import pandas as pd
 import numpy as np
 import dash_table
+import logging
 import dash
 import yaml
 
 from portfolio import Portfolio
 from utils import get_dates
 
+logging.basicConfig(format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S', level=logging.INFO)
 pd.options.mode.chained_assignment = None  # default='warn'
 parser = argparse.ArgumentParser()
 
@@ -57,7 +60,7 @@ def get_portfolio_assets(value):
 
 
 def update_portfolio(update_transactions=True):
-    print('>> Updating portfolio')
+    logging.info('>> updating portfolio')
     portfolio = Portfolio(settings)
     missing = portfolio.add_transactions(
         update_transactions=update_transactions)
@@ -253,6 +256,7 @@ def serve_layout():
                                     symbol=Symbol.yes, symbol_suffix=' %')},
                                 {'name': 'Fees', 'id': 'fee', **euro_format},
                                 {'name': 'Dividends', 'id': 'dividend', **euro_format},
+                                {'name': '', 'id': 'link', 'presentation':'markdown'},
                             ],
                             style_cell={
                                 'textAlign': 'left', 'backgroundColor': BGCOLOR, 'color': 'white'},
@@ -454,13 +458,13 @@ def display_time_series(typ, data_type, detailed, date, signal):
             'assets') if asset in typ]
 
     df = get_portfolio_data(data_type)
-
+    df = df[pd.to_datetime(df['date']) >= pd.to_datetime(dates[date])]
     if data_type == 'values':
-        fig = px.area(df[pd.to_datetime(df['date']) >= pd.to_datetime(dates[date])],
+        fig = px.area(df,
                       labels={'date': '', 'value': '', 'variable': ''},
                       x='date', y=['Total']+typ, template=TEMPLATE)
     else:
-        fig = px.line(df[pd.to_datetime(df['date']) >= pd.to_datetime(dates[date])],
+        fig = px.line(df,
                       labels={'date': '', 'value': '', 'variable': ''},
                       x='date', y=['Total']+typ, template=TEMPLATE)
     if (data_type == 'values' or detailed) and typ != []:
@@ -513,6 +517,12 @@ def display_time_series(typ, data_type, detailed, date, signal):
 )
 def update_table(typ, detailed, date, signal):
     holding = get_portfolio_holdings(date)
+    with open('data/composition_ids.json') as f:
+        composition_ids = json.load(f)
+    urls = {v[2]:v[1] for v in composition_ids.values()}
+    holding['link'] = holding['name'].apply(lambda d: urls.get(d, None))
+    holding['link'] = holding['link'].apply(lambda d: f'[+]({d})' if d else '')
+
     df = holding[holding.name.isin(typ+['Total'])]
     if detailed:
         df = pd.concat([df, holding[holding.type.isin(typ)]])
@@ -541,7 +551,6 @@ def display_sunburst(data_type, detailed, date, signal):
     data_types = {'gains': 'gain', 'gains_p': 'gain_p',
                   'values': 'value', 'prices': 'price'}
     datatype = data_types[data_type]
-    custom_data = ['name', datatype]
     path = ['type', 'symbol'] if detailed else ['type']
 
     holding = get_portfolio_holdings(date)
@@ -553,6 +562,8 @@ def display_sunburst(data_type, detailed, date, signal):
                     datatype] = - neg_holding[datatype]
     neg_holding = neg_holding[~neg_holding['type'].isnull()]
 
+    custom_data = ['name', datatype]
+
     colors = px.colors.qualitative.Plotly
     types = list(holding[~holding['type'].isnull()].type.unique())
     color_map = {typ: color for typ, color in zip(types, colors)}
@@ -563,9 +574,9 @@ def display_sunburst(data_type, detailed, date, signal):
                           template=TEMPLATE, custom_data=custom_data, color_discrete_map=color_map)
 
     pos_fig.update_traces(
-        hovertemplate='<b>%{customdata[0]}:</b> %{customdata[1]:.2f}')
+        hovertemplate='<b>%{label}:</b> %{value:.2f} (%{percentRoot:%})')
     neg_fig.update_traces(
-        hovertemplate='<b>%{customdata[0]}:</b> %{customdata[1]:.2f}')
+        hovertemplate='<b>%{label}:</b> %{value:.2f} (%{percentRoot:%})')
 
     pos_fig.for_each_trace(
         lambda trace: trace.update(
@@ -650,12 +661,28 @@ def exposure(detailed, signal):
     sectors_fig.update_layout(showlegend=False)
     sectors_fig.update_traces(hovertemplate='<b>%{label}: %{value}%</b>')
 
+
+    style_size = ['Large', 'Middle', 'Small']
+    style_type = ['Value', 'Blend', 'Growth']
+    style_mat = [data['styles'][f'{s_size} {s_type}'] for s_size in style_size for s_type in style_type]
+    style_mat = np.array(style_mat).reshape(3,3)
+    style_mat_annot = style_mat if detailed else np.round(style_mat).astype(int)
+
+    style_fig = ff.create_annotated_heatmap(style_mat, x=style_type, y=style_size, annotation_text=style_mat_annot, colorscale=colors[1:3], hoverinfo='skip')
+
     font = dict(size=30, color='#ffffff', family='Lato')
 
-    fig = make_subplots(rows=1, cols=2, specs=[[{"type": "domain"}, {"type": "domain"}]],
-                            subplot_titles=(f"Regions", f"Sectors"))
+    fig = make_subplots(rows=1, cols=3, specs=[[{"type": "domain"}, {}, {"type": "domain"}]],
+                            subplot_titles=(f"Regions", "Styles", f"Sectors"))
     fig.add_trace(countries_fig['data'][0], row=1, col=1)
-    fig.add_trace(sectors_fig['data'][0], row=1, col=2)
+    fig.add_trace(style_fig['data'][0], row=1, col=2)
+    fig.add_trace(sectors_fig['data'][0], row=1, col=3)
+
+    annot1 = list(fig.layout.annotations)
+    annot2 = list(style_fig.layout.annotations)
+
+    fig.update_layout(annotations=annot1+annot2)
+    
     for i in fig['layout']['annotations']:
         i['font'] = font
 
@@ -665,9 +692,10 @@ def exposure(detailed, signal):
         margin=dict(t=100, b=10, r=10, l=10),
         font={'size': 20, 'color':'rgb(234,234,234)'},
         hoverlabel={'font_size': 20},
-        showlegend=False
+        showlegend=False,
     )
-    fig.update_traces(textfont_color='rgb(54,54,54)')
+    fig.update_yaxes(tickangle=-90)
+    # fig.update_traces(textfont_color='rgb(54,54,54)')
 
     holdings_types = [data['holdings_types'][holding]['sector'] for holding in data['holdings'].keys()]
     holdings_countries = [data['holdings_types'][holding]['country'] for holding in data['holdings'].keys()]

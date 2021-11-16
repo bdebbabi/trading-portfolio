@@ -2,6 +2,7 @@ from components import Transaction, Asset, Record
 from utils import get_transactions, get_dates
 from datetime import datetime, timedelta
 from parser import webparser
+import logging
 from tqdm import tqdm
 import pandas as pd
 import numpy as np
@@ -36,6 +37,7 @@ class Portfolio:
         self.webparser = webparser(self.settings['AUTHENTIFICATION'])
         missing = []
         if update_transactions:
+            logging.info('>> adding transactions')
             self.webparser.login()
             transactions, missing = get_transactions(
                 self.creation_date, self.webparser)
@@ -78,10 +80,12 @@ class Portfolio:
         return missing
 
     def get_historic_data(self, incl_fees=True, incl_dividends=True):
+        logging.info('>> getting historical data')
         for asset in tqdm(self.assets.values()):
             asset.get_historic_data(incl_fees, incl_dividends)
 
     def get_data(self, incl_fees=True, incl_dividends=True):
+        logging.info('>> getting data')
         def update_data(data, asset_data):
             data['Total'] += asset_data
             data[asset.type] += asset_data
@@ -134,6 +138,7 @@ class Portfolio:
         self.prices.to_csv('data/prices.csv')
 
     def get_holdings(self):
+        logging.info('>> getting holdings')
         self.holdings = {}
         holdings = {key: [] for key in self.dates.keys()}
         items = ['name', 'symbol', 'type', 'quantity',
@@ -174,7 +179,8 @@ class Portfolio:
             self.holdings[key].to_csv(f'data/holdings_{key}.csv', index=False)
     
     def get_composition(self):
-        assets_total = {'countries':{}, 'regions':{}, 'sectors':{}, 'holdings':{}, 'holdings_types':{}}
+        logging.info('>> getting composition')
+        assets_total = {'countries':{}, 'regions':{}, 'sectors':{}, 'holdings':{}, 'holdings_types':{}, 'styles':{}}
         funds, regions = {}, {}
         for asset in self.assets.values():
             if asset.type in ['Funds', 'Stock']:
@@ -202,7 +208,6 @@ class Portfolio:
                 assets_total[key] = dict(value.items())
                 # first = list(assets_total[key].keys())[0]
                 # assets_total[key][first] = np.round(assets_total[key][first] + 100 - np.sum(list(assets_total[key].values())),2)
-        
         with open('data/composition_raw.json', 'w') as f:
             json.dump(raw_assets_total, f, indent=4)
         self.composition = assets_total

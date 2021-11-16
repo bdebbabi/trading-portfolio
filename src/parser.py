@@ -181,9 +181,10 @@ class webparser:
 
         return data
 
-    def get_asset_composition(self, id, asset_type):
-        def get_composition(id, comp_type):
-            url=f'https://api-global.morningstar.com/sal-service/v1/etf/{comp_type}/{id}/data?languageId=en&locale=en&clientId=MDC&benchmarkId=category&component=sal-components-mip-country-exposure&version=3.31.0'
+    def get_asset_composition(self, id, asset_type, name):
+
+        def get_exposure(id, comp_type, component):
+            url=f'https://api-global.morningstar.com/sal-service/v1/etf/{comp_type}/{id}/data?languageId=en&locale=en&clientId=MDC&benchmarkId=category&component={component}&version=3.31.0'
             headers = {'ApiKey': 'lstzFDEOhfFNMLikKa0am9mgEKLBl49T'}
             req = requests.get(url, headers=headers)
             return json.loads(req.text) 
@@ -204,7 +205,7 @@ class webparser:
             pos = pos+21 if req.text[pos+20] == ',' else pos+7
             site_id = req.text[pos:pos+10]
             
-            return site_id
+            return site_id, url
 
         def get_site_id(id):
             path = 'data/composition_ids.json'
@@ -213,31 +214,34 @@ class webparser:
                 with open(path, 'r') as f:
                     composition_ids = json.load(f)
             if id in composition_ids:
-                site_id = composition_ids[id]
+                site_id, url, _ = composition_ids[id]
             else:
                 if asset_type == 'Funds':
-                    site_id = get_parser_site_id(id)
+                    site_id, url = get_parser_site_id(id)
                 else:
                     exchange, ticker = get_tick_ex(id)
                     site_id = exchange+'/'+ticker
-                composition_ids[id] = site_id
+                    url = None
+                composition_ids[id] = [site_id, url, name]
+                
                 with open(path, 'w') as f:
                     json.dump(composition_ids, f, indent=4)
-            return site_id 
-
+            return site_id
+        
         if asset_type == 'Funds':
             site_id = get_site_id(id)
-            req = get_composition(site_id, 'portfolio/regionalSectorIncludeCountries')
+            composition_component = 'sal-components-mip-country-exposure'
+            req = get_exposure(site_id, 'portfolio/regionalSectorIncludeCountries', composition_component)
             countries = {country['name']:country['percent'] for country in req['fundPortfolio']['countries'] if country.get('percent',0)!=0}
             regions = {region['name']:region['percent'] for region in req['fundPortfolio']['regions'] if region.get('percent',0)!=0}
 
-            req = get_composition(site_id, 'portfolio/v2/sector')
+            req = get_exposure(site_id, 'portfolio/v2/sector', composition_component)
             sectors = {k:v for k,v in list(req['EQUITY']['fundPortfolio'].items())[1:] if v is not None}
 
-            req = get_composition(site_id, 'portfolio/holding')
+            req = get_exposure(site_id, 'portfolio/holding', composition_component)
             if req['holdingSummary']['topHoldingWeighting'] == 100 and req['numberOfHolding'] == 1:
                 site_id = get_site_id(req['holdingActiveShare']['etfBenchmarkProxyName'])
-                req = get_composition(site_id, 'portfolio/holding')
+                req = get_exposure(site_id, 'portfolio/holding', composition_component)
             holdings, holdings_types = {}, {}
             for holding_type in ['equityHoldingPage', 'boldHoldingPage', 'otherHoldingPage']:
                 for holding in req[holding_type]['holdingList']:
@@ -246,7 +250,12 @@ class webparser:
                     sector = holding['sector'] if holding['sector'] else holding['secondarySectorName'] 
                     holdings_types.update({securityName:{'sector':sector, 'country':holding['country']}})
             holdings =  dict(sorted(holdings.items(), key=lambda item: item[1], reverse=True))
-        
+
+            req = get_exposure(site_id, 'process/weighting', 'sal-components-mip-style-weight')
+            if req['largeValue']:
+                style = {stock_style: float(req[stock_style]) for stock_style in list(req.keys())[2:]}
+            else:
+                style = {}
         elif asset_type == 'Stock':
             site_id = get_site_id(id)
             url = f'https://www.morningstar.com/stocks/{site_id}/quote'
@@ -266,6 +275,8 @@ class webparser:
             holdings = {name: 100}
             holdings_types = {name: {'sector': sector, 'country':country}}
 
-        composition = {'countries':countries, 'regions':regions, 'sectors':sectors, 'holdings':holdings, 'holdings_types':holdings_types}
+            style = {}
+
+        composition = {'countries':countries, 'regions':regions, 'sectors':sectors, 'holdings':holdings, 'holdings_types':holdings_types, 'styles':style}
         
         return composition
