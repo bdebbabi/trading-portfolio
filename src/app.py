@@ -68,6 +68,7 @@ def update_portfolio(update_transactions=True):
     portfolio.get_data()
     portfolio.get_holdings()
     portfolio.get_composition()
+    logging.info('>> portfolio updated')
 
     return missing
 

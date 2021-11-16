@@ -182,7 +182,7 @@ class Portfolio:
         logging.info('>> getting composition')
         assets_total = {'countries':{}, 'regions':{}, 'sectors':{}, 'holdings':{}, 'holdings_types':{}, 'styles':{}}
         funds, regions = {}, {}
-        for asset in self.assets.values():
+        for asset in tqdm(self.assets.values()):
             if asset.type in ['Funds', 'Stock']:
                 compositions = asset.get_composition()
                 funds[asset.name] = compositions['holdings']
