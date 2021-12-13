@@ -66,12 +66,15 @@ class webparser:
     def get_asset_prices(self, asset_id, asset_type, start_date):
         if asset_type == 'Crypto':
             start_date = start_date-timedelta(1)
-            stock_info = HistoricalData(asset_id+'-USD',
-                                        86400,
-                                        start_date.strftime('%Y-%m-%d-%H-%M'), 
-                                        verbose=False).retrieve_data()
-            prices = {time.to_pydatetime().date(): value 
-                        for time, value in stock_info.to_dict()['close'].items()}
+            if asset_id == 'USDC':
+                prices = {start_date+timedelta(day):1 for day in range((date.today()-start_date).days+1)}
+            else:
+                stock_info = HistoricalData(asset_id+'-USD',
+                                            86400,
+                                            start_date.strftime('%Y-%m-%d-%H-%M'), 
+                                            verbose=False).retrieve_data()
+                prices = {time.to_pydatetime().date(): value 
+                            for time, value in stock_info.to_dict()['close'].items()}
             currency = 'USD'
         
         else:
