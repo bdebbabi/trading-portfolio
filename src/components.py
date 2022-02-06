@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
-import numpy as np
 import textwrap
+import os.path
+import json
 
 class Transaction:
     def __init__(self, datetime, id, value, quantity, fee, description, via):
@@ -20,7 +21,7 @@ class Asset:
         self.name = name
         self.symbol = symbol
         self.type = typ
-        self.id = id
+        self.id = self.check_id(id)
         self.quantity = 0
         self.transactions = []
         self.records = []
@@ -33,6 +34,14 @@ class Asset:
         self.web_parser = web_parser
         self.eur_to_usd = eur_to_usd
         self.gains = {}
+
+    def check_id(self,id):
+        ids_path = 'assets/ids.json'
+        if os.path.isfile(ids_path):
+            with open(ids_path, 'r') as f:
+                ids = json.load(f)
+            id = ids.get(id, id)
+        return id
 
     def add_transaction(self, transaction):
         self.transactions.append(transaction)

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import pandas as pd
+import investpy
 
 
 def get_transactions(creation_date, webparser):
@@ -77,8 +78,7 @@ def get_coinbase_transactions(webparser):
     wallets = {}
 
     for acc in accounts['data']:
-        if float(acc['balance']['amount']) != 0:
-            wallets[acc['currency']] = acc['id']
+        wallets[acc['currency']] = acc['id']
     res = []
     for wallet in wallets:
         transactions = client.get_transactions(wallet)['data']
@@ -92,6 +92,17 @@ def get_coinbase_transactions(webparser):
                 price = buy['subtotal']['amount']
                 for fee in fees:
                     transaction_fee += float(fee['amount']['amount'])
+            
+            if line['type'] == 'trade': #ETH -> ETH2
+                currency = line['native_amount']['currency']
+                price = line['native_amount']['amount']
+                if currency == 'USD':
+                    price = float(price) * get_eur_usd(line['created_at'])
+            
+            if line['type'] == 'send':
+                if float(line['native_amount']['amount']) < 0:
+                    continue #NMR
+                
             transaction['date'] = datetime.strptime(
                 line['created_at'], '%Y-%m-%dT%H:%M:%SZ')
             transaction['asset'] = ' ' .join(
@@ -131,3 +142,16 @@ def get_dates(creation_date):
         '1D': today-timedelta(1)
     }
     return dates
+
+def get_eur_usd(date):
+    date = datetime.strptime(date, '%Y-%m-%dT%H:%M:%SZ') 
+    weekday = date.strftime('%a')
+    if weekday == 'Sun':
+        date = date - timedelta(days=2)
+    elif weekday == 'Sat':
+        date = date - timedelta(days=1)
+    price = investpy.get_currency_cross_historical_data(currency_cross='USD/EUR', 
+                                                        from_date=date.strftime('%d/%m/%Y'), 
+                                                        to_date=(date+timedelta(days=1)).strftime('%d/%m/%Y')
+                                                        )['Close'][0]
+    return float(price)
