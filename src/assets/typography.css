@@ -1,12 +1,198 @@
-body { 
-    margin: 0;
-    background-color: rgb(17, 17, 17);
- }
-
-h1, h2, h3, h4, h5, h6 {
-    color: rgb(238, 238, 238)
+.selector-rect{
+    fill: rgb(34, 34, 34) !important
 }
 
-.selector-rect{
-    fill: rgb(37, 37, 37) !important
+.holdings .row {
+    display: block;
+    margin: 0;
+    background-color: black;
+  }
+
+.exposure-table .row {
+    display: block;
+    margin: 0;
+    background-color: black;
+  }
+
+.exposure-sunburst{
+  margin-bottom: 40px ;
+} 
+
+.type-card {
+    display: flex;
+}
+
+.type-name {
+    width: 50%;
+}
+
+.type-data{
+    position: absolute;
+    right: 3%;
+    text-align: right;
+}
+
+.container, .container-md, .container-sm {
+    max-width: none;
+}
+
+.card-gain, .card-text{
+    font-family: "Lato";
+    display: inline-flex;
+}
+.gain_p{
+    margin-left: 20px;
+}
+.main-card {
+    text-align: center;
+}
+
+text{
+    font-size: 16px;
+}
+
+.boolean-detailed { 
+    display: flex; 
+    margin-left: 30%;
+}
+
+.Select-control {
+    background-color: rgb(34,34,34) !important;
+    font-size: 18px !important;
+}
+
+.Select-control .Select-input:focus{
+  background: rgb(34,34,34) !important;
+}
+
+.Select-value .Select-value-label{
+    color: white !important;
+}
+  
+.Select-menu-outer {
+    background-color: rgb(34,34,34) !important;
+    font-size: 20px;
+}
+
+.nav-tabs .nav-item{
+    width: 25%;
+    text-align: center;
+    font-size: 25px;
+    background-color: #303030;
+}
+
+.card{
+    background-color: rgb(34,34,34) !important;
+}
+
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner tr {
+    border-bottom-style: hidden;
+    font-size: 18px;
+}
+
+.dash-tooltip{
+    color: #222222;
+}
+
+.bg-dark {
+    background-color: #222222 !important;
+}
+
+.modebar{
+    display: none !important;
+}
+
+.custom-control-label::after,
+.custom-control-label::before {
+  display: none;
+}
+
+.custom-control {
+  padding-left: 0;
+}
+
+.custom-control-inline {
+  margin-right: 0;
+}
+
+.date-group-labels {
+  border-radius: 0px;
+  font: 20px Lato;
+  padding: 6px 7px;
+  background-color: #222222;
+  cursor: pointer;
+}
+
+.date-group-labels.date-group-labels-checked{
+  background-color: #343434;
+  box-shadow: inset 0px 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.custom-radio:first-child .date-group-labels {
+  border-radius: 6px 0 0 6px;
+}
+
+.custom-radio:last-child .date-group-labels {
+  border-radius: 0 6px 6px 0;
+}
+
+.custom-radio:not(:last-child) .date-group-labels {
+  border-right: none;
+}
+
+.date-group-labels:hover {
+  box-shadow: inset 0px 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.date-group-items{
+    justify-content: center;
+    display: flex;
+}
+
+.custom-switch .detailed-label {
+    border-radius: 6px;
+  }
+
+.detailed-label {
+    border-radius: 0px;
+    font-size: xxx-large;
+    margin-top: -15px;
+    background-color: #222222;
+    cursor: pointer;
+  }
+  
+.detailed-label.detailed-label-checked{
+    font-weight: bold;
+}
+
+.update-transactions-button{
+  font-size:x-large;
+  background-color: transparent;
+  border-color: transparent;
+}
+.detailed-item{
+  text-align: right;
+}
+
+#prices-button, #transactions-button{
+  color: white;
+}
+
+#prices-button:disabled, #transactions-button:disabled{
+  color: #343434;
+}
+
+.toast{
+  position: inherit;
+  margin-left: 75%;
+  max-width: 20%;
+  font-size: 20px;
+}
+
+.dash-spreadsheet-inner input:not([type="radio"]):not([type="checkbox"]){
+  color: white !important;
+}
+
+a {
+  color: white;
 }
